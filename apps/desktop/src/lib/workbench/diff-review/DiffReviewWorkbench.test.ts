@@ -11,6 +11,7 @@ import { diffReviewDefinition } from '../definitions/diff_review/definition'
 import type { DiffReviewState } from '../definitions/diff_review/state'
 import DiffReviewWorkbench from './DiffReviewWorkbench.svelte'
 import { getWorkbenchTour } from '../onboarding/workbenchTours'
+import { getWorkbenchDefinition } from '../definitions/registry'
 
 const originalData = diffReviewDefinition.examples![0].spec.data as DiffReviewData
 const saved: DiffReviewState = { type: 'diff_review', comments: [
@@ -53,7 +54,7 @@ describe('diff review interactions', () => {
   it('exposes guide landmarks before selecting lines without creating comments or changing the source', async () => {
     const original = JSON.stringify(originalData)
     const app = await open()
-    const tour = getWorkbenchTour('diff_review', 'en')!
+    const tour = getWorkbenchTour(getWorkbenchDefinition('diff_review'), 'en')!
     for (const step of tour.steps.filter((step) => step.target !== '[data-feedback-actions]')) {
       expect(document.querySelector(step.target), step.id).not.toBeNull()
     }

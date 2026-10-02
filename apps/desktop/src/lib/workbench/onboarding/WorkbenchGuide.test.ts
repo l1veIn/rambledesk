@@ -8,6 +8,8 @@ import { emptyRequestSpeechTidy, type RequestSpeechTidyState } from '../../speec
 import WorkbenchGuide from './WorkbenchGuide.svelte'
 import { createWorkbenchTourSeenStore } from './workbenchTourSeen'
 import { getWorkbenchTour } from './workbenchTours'
+import type { WorkbenchDefinition } from '../definitions/contracts'
+import { getWorkbenchDefinition } from '../definitions/registry'
 
 // Keep the real storage implementation, but give each test an independent
 // session-memory fallback just as a new browser session would have.
@@ -81,13 +83,14 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-function open(initial: { kind?: string; requestId?: string; disabled?: boolean; ready?: boolean; scope?: HTMLElement } = {}) {
-  const state = writable({ kind: 'ramble', requestId: 'request-1', disabled: false, ready: true, scope, ...initial })
+type GuideDefinition = Pick<WorkbenchDefinition, 'type' | 'guide'>
+function open(initial: { kind?: string; definition?: GuideDefinition | null; requestId?: string; disabled?: boolean; ready?: boolean; scope?: HTMLElement } = {}) {
+  const state = writable({ kind: 'ramble', definition: undefined as GuideDefinition | null | undefined, requestId: 'request-1', disabled: false, ready: true, scope, ...initial })
   const props = fromStore(state)
   const host = document.createElement('div')
   scope.append(host)
   view = mount(WorkbenchGuide, { target: host, context: new Map([[VOICE_INPUT_CONTEXT, { state: voiceState, start: vi.fn(), stop: vi.fn(), selectTarget: vi.fn() }]]), props: {
-    get kind() { return props.current.kind },
+    get definition() { return props.current.definition === undefined ? getWorkbenchDefinition(props.current.kind) : props.current.definition },
     get requestId() { return props.current.requestId },
     get disabled() { return props.current.disabled },
     get ready() { return props.current.ready },
@@ -99,7 +102,7 @@ function open(initial: { kind?: string; requestId?: string; disabled?: boolean; 
 describe('workbench first-use guide', () => {
   it.each(['ramble', 'visual_feedback', 'diff_review'])('opens %s on the first editable visit and remembers an explicit skip across requests', async (kind) => {
     const state = open({ kind })
-    const tour = getWorkbenchTour(kind, 'en')!
+    const tour = getWorkbenchTour(getWorkbenchDefinition(kind), 'en')!
     await vi.waitFor(() => expect(dialog()?.textContent).toContain(tour.steps[0].title))
     expect(dialog()?.textContent).toContain('Step 1 of 5')
     expect(seen.store!.hasSeen(tour.id, 1)).toBe(false)
@@ -115,7 +118,7 @@ describe('workbench first-use guide', () => {
     const businessAction = vi.fn()
     scope.querySelectorAll('button').forEach((element) => element.addEventListener('click', businessAction))
     open({ kind })
-    const tour = getWorkbenchTour(kind, 'en')!
+    const tour = getWorkbenchTour(getWorkbenchDefinition(kind), 'en')!
     await vi.waitFor(() => expect(dialog()?.textContent).toContain(tour.steps[0].title))
     button('Next').click()
     await vi.waitFor(() => expect(dialog()?.textContent).toContain(tour.steps[1].title))
@@ -179,12 +182,12 @@ describe('workbench first-use guide', () => {
     expect(dialog()).toBeNull()
     expect(trigger().textContent).toContain('Show guide')
     trigger().click()
-    await vi.waitFor(() => expect(dialog()?.textContent).toContain(getWorkbenchTour(kind, 'en')!.steps[0].title))
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain(getWorkbenchTour(getWorkbenchDefinition(kind), 'en')!.steps[0].title))
     button('Skip guide').click()
     await vi.waitFor(() => expect(dialog()).toBeNull())
     expect(seen.store!.hasSeen(otherKind, 1)).toBe(false)
     state.update((current) => ({ ...current, kind: otherKind, requestId: 'request-2' }))
-    await vi.waitFor(() => expect(dialog()?.textContent).toContain(getWorkbenchTour(otherKind, 'en')!.steps[0].title))
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain(getWorkbenchTour(getWorkbenchDefinition(otherKind), 'en')!.steps[0].title))
     expect(seen.store!.hasSeen(otherKind, 1)).toBe(false)
   })
 
@@ -218,7 +221,7 @@ describe('workbench first-use guide', () => {
     expect(document.querySelectorAll('dialog[open], [role="dialog"]')).toHaveLength(1)
   })
 
-  it('closes a stale type without marking it complete or showing guidance for unsupported workbenches', async () => {
+  it('closes a stale type without marking it complete or showing guidance for workbenches without a guide', async () => {
     const state = open()
     await vi.waitFor(() => expect(dialog()).not.toBeNull())
     state.update((current) => ({ ...current, kind: 'questions' }))
@@ -226,6 +229,48 @@ describe('workbench first-use guide', () => {
     expect(trigger()).toBeNull()
     expect(seen.store!.hasSeen('ramble', 1)).toBe(false)
     state.update((current) => ({ ...current, kind: 'future-workbench' }))
+    await tick()
+    expect(dialog()).toBeNull()
+    expect(trigger()).toBeNull()
+  })
+
+  it('supports first use and replay for a definition that has no central registration', async () => {
+    const definition: GuideDefinition = {
+      type: 'custom-review',
+      guide: { version: 1, steps: [{ id: 'context', target: '[data-tour="request-context"]', title: ['自定义工作台', 'Custom workbench'], body: ['说明', 'Instructions'] }] },
+    }
+    expect(getWorkbenchDefinition(definition.type)).toBeUndefined()
+    const state = open({ definition })
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Custom workbench'))
+    button('Get started').click()
+    await vi.waitFor(() => expect(dialog()).toBeNull())
+    expect(JSON.parse(localStorage.getItem('rambledesk.workbench-tour.custom-review')!)).toEqual({ version: 1 })
+    state.update((current) => ({ ...current, requestId: 'request-2' }))
+    await tick()
+    expect(dialog()).toBeNull()
+    trigger().click()
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Custom workbench'))
+  })
+
+  it('keeps completed records when metadata moves and starts a newly declared guide version', async () => {
+    localStorage.setItem('rambledesk.workbench-tour.ramble', JSON.stringify({ version: 1 }))
+    const definition = getWorkbenchDefinition('ramble')!
+    const state = open({ definition })
+    await tick()
+    expect(dialog()).toBeNull()
+    state.update((current) => ({ ...current, definition: { ...definition, guide: { ...definition.guide!, version: 2 } } }))
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Start with the context'))
+    expect(seen.store!.hasSeen('ramble', 2)).toBe(false)
+    button('Skip guide').click()
+    await vi.waitFor(() => expect(dialog()).toBeNull())
+    expect(JSON.parse(localStorage.getItem('rambledesk.workbench-tour.ramble')!)).toEqual({ version: 2 })
+    state.update((current) => ({ ...current, requestId: 'request-2' }))
+    await tick()
+    expect(dialog()).toBeNull()
+  })
+
+  it.each([undefined, { version: 1, steps: [] }])('renders no entry for absent or empty guide metadata: %j', async (guide) => {
+    open({ definition: { type: 'custom-review', guide } })
     await tick()
     expect(dialog()).toBeNull()
     expect(trigger()).toBeNull()

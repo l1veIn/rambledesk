@@ -52,10 +52,22 @@ export type WorkbenchExample = {
   actions?: readonly FeedbackWorkspaceView['actions'][number][]
   attachments?: readonly WorkbenchExampleAttachment[]
 }
+export type WorkbenchGuideStep = {
+  id: string
+  target: string
+  /** Localized text in [zh-CN, en] order. */
+  title: readonly [string, string]
+  body: readonly [string, string]
+}
+export type WorkbenchGuideDefinition = {
+  version: number
+  steps: readonly WorkbenchGuideStep[]
+}
 export type WorkbenchDefinition = {
   type: string
   version: number
   legacy?: boolean
+  guide?: WorkbenchGuideDefinition
   accepts: (data: Record<string, unknown>) => boolean
   decodeState: (value: unknown) => WorkbenchState | null
   hasInput: (spec: WorkbenchSpec, state: WorkbenchState | null) => boolean

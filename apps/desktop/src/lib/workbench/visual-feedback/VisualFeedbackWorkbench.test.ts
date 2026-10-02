@@ -8,6 +8,7 @@ import { emptyVisualState, type VisualState } from './visualModel'
 import Harness from './VisualTestHarness.svelte'
 import VisualMarks from './VisualMarks.svelte'
 import { getWorkbenchTour } from '../onboarding/workbenchTours'
+import { getWorkbenchDefinition } from '../definitions/registry'
 
 const data: VisualFeedbackData = { title: 'Sketch', source_version: 'snapshot-1', width: 960, height: 600, image_file_name: null, background_color: '#fff8ed' }
 const mark = { id: 'saved_mark', kind: 'arrow' as const, points: [{ x: 20, y: 30 }, { x: 200, y: 180 }], color: '#e5484d', stroke_width: 4, text: '', body: 'Move this' }
@@ -33,7 +34,7 @@ describe('visual drawing and recovered feedback', () => {
   it('exposes guide landmarks before drawing without changing an empty draft or creating annotations', async () => {
     const initial = emptyVisualState()
     await open(initial)
-    const tour = getWorkbenchTour('visual_feedback', 'en')!
+    const tour = getWorkbenchTour(getWorkbenchDefinition('visual_feedback'), 'en')!
     for (const step of tour.steps.filter((step) => step.target !== '[data-feedback-actions]')) {
       expect(document.querySelector(step.target), step.id).not.toBeNull()
     }

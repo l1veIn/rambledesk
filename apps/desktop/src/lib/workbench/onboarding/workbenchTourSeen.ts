@@ -1,7 +1,5 @@
-import type { WorkbenchTourId } from './workbenchTours'
-
 type TourStorage = Pick<Storage, 'getItem' | 'setItem'>
-const key = (id: WorkbenchTourId) => `rambledesk.workbench-tour.${id}`
+const key = (id: string) => `rambledesk.workbench-tour.${id}`
 
 /**
  * Completion belongs to a workbench type, never a request. Memory also records
@@ -9,9 +7,9 @@ const key = (id: WorkbenchTourId) => `rambledesk.workbench-tour.${id}`
  * every time the user switches requests during the same session.
  */
 export function createWorkbenchTourSeenStore(storage: () => TourStorage | null = () => globalThis.localStorage) {
-  const seenVersions = new Map<WorkbenchTourId, number>()
+  const seenVersions = new Map<string, number>()
 
-  function hasSeen(id: WorkbenchTourId, version: number): boolean {
+  function hasSeen(id: string, version: number): boolean {
     if ((seenVersions.get(id) ?? 0) >= version) return true
     try {
       const saved: unknown = JSON.parse(storage()?.getItem(key(id)) ?? 'null')
@@ -23,7 +21,7 @@ export function createWorkbenchTourSeenStore(storage: () => TourStorage | null =
     }
   }
 
-  function markSeen(id: WorkbenchTourId, version: number): void {
+  function markSeen(id: string, version: number): void {
     seenVersions.set(id, Math.max(seenVersions.get(id) ?? 0, version))
     try {
       // A separate key preserves every other workbench's completion state.

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { createWorkbenchTourSeenStore } from './workbenchTourSeen'
-import type { WorkbenchTourId } from './workbenchTours'
 
 function memoryStorage() {
   const values = new Map<string, string>()
@@ -12,7 +11,7 @@ function memoryStorage() {
 }
 
 describe('workbench tour completion', () => {
-  it.each<WorkbenchTourId>(['ramble', 'document_review', 'web_review', 'terminal', 'visual_feedback', 'diff_review'])('only persists explicit completion of %s and keeps types independent across reloads', (kind) => {
+  it.each(['ramble', 'document_review', 'web_review', 'terminal', 'visual_feedback', 'diff_review', 'custom-review'])('only persists explicit completion of %s and keeps types independent across reloads', (kind) => {
     const storage = memoryStorage()
     storage.values.set('rambledesk.onboarding.completed', 'true')
     const firstSession = createWorkbenchTourSeenStore(() => storage)
@@ -21,7 +20,7 @@ describe('workbench tour completion', () => {
     firstSession.markSeen(kind, 1)
     const nextSession = createWorkbenchTourSeenStore(() => storage)
     expect(nextSession.hasSeen(kind, 1)).toBe(true)
-    const other: WorkbenchTourId = kind === 'visual_feedback' ? 'diff_review' : 'visual_feedback'
+    const other = kind === 'visual_feedback' ? 'diff_review' : 'visual_feedback'
     expect(nextSession.hasSeen(other, 1)).toBe(false)
     nextSession.markSeen(other, 1)
     expect(nextSession.hasSeen(kind, 1)).toBe(true)
