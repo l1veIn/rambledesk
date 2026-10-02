@@ -1,0 +1,36 @@
+# 视觉反馈与差异评审复验
+
+日期：2026-10-02。环境：Windows x86_64。源码范围：基于 `42e7d3b` 的 `codex/visual-diff-workbenches`，以包含本记录的功能提交为准。本文记录这次源码和浏览器检查，安装器、其他平台及真实设备体验另按[发布清单](../RELEASE_CHECKLIST.md)验收。
+
+## 自动检查
+
+| 范围 | 结果 |
+| --- | --- |
+| 前端完整回归 | 288 文件、1993 项通过；1 文件、1 项沿用既有跳过。使用 `--maxWorkers=4`，未改变测试脚本或断言 |
+| PNG 容量收尾 | 导出、controller 和真实发布链路 3 文件、15 项通过；包含超限 PNG 在读取／上传前报错的新增测试 |
+| Rust 完整回归 | 默认 workspace 505 项、独立 desktop target 130 项通过；2 项沿用既有忽略。使用 `CARGO_BUILD_JOBS=1`、`RUST_TEST_THREADS=2`，未改变测试脚本或断言 |
+| 开发 feature | core/storage 整包 `workbench-fixtures` 260 项通过，覆盖真实 SQLite、磁盘反馈包、草稿恢复、CAS 与提交 |
+| 静态与构建 | Svelte 0 错误、0 警告；Web 生产构建通过。workspace 与 desktop 的 all-targets Clippy 零警告；格式、模块大小、术语和职责边界通过 |
+| 适配器与材料 | Pi 22 项、dsh 28 项、工作台工具 10 项通过；playground 准备检查发现十个场景，附件齐全 |
+| MCP | CLI self-test 与 Inspector 通过；覆盖五个工具的认证、发现、schema、请求和反馈读取，以及独立服务恢复 |
+| 合同与扩展 | 生成合同核对通过；临时 `extension_probe` 的 Rust／前端测试、类型检查和 playground 自动发现通过，共享生产修改仅两处注册入口，结束后原文件内容恢复 |
+| 版本一致性 | `pnpm release:check v0.4.0` 通过；未据此创建标签或发行产物 |
+
+原始本地日志使用 `.local-artifacts/visual-diff-*` 前缀；临时扩展检查记录 `restored: true`，未把演练类型保留在正式源码中。
+
+## 浏览器观察
+
+通过完整 App 的开发 fixture 预览检查，不把内存预览存储记作后端落盘证据：
+
+- 空白画布绘制矩形和文字、补充意见、全屏往返并提交；仅写整体意见的另一请求也生成 PNG 并进入只读终态。
+- 640×400 固定图片绘制箭头后提交，从反馈附件打开实际合成 PNG，确认背景和标记一致；新图片预览无控制台错误。
+- 两份固定 diff 上添加修改后第 2–3 行范围评论及整块评论，切换文件、按评论定位、全屏往返并提交，只读回看保留位置和意见。
+- 网页和终端分别完成五步首次引导，手动入口可重看；网页刷新不重复自动显示。终端引导过程中未启动 PTY。
+
+后端落盘、附件归属／哈希／实际图像尺寸、JPEG EXIF 方向、评论锚点及取消未完成草稿由自动化另外覆盖。能力合同见[视觉反馈](../workbench/visual-feedback.md)、[差异评审](../workbench/diff-review.md)及[引导](../workbench/onboarding.md)。
+
+## 容量与待验边界
+
+合成 PNG 沿用 20 MiB 附件上限。内存编码探针发现 4096×4096 图片可生成约 15 MB JPEG、约 49 MB PNG；压缩原图合格不保证结果合格。schema 和文档已说明，导出超限会保留可编辑状态并提示让 Agent 用较小图片或画布创建新请求；不自动缩放冻结的来源和标注。MCP 图片内联另有 2 MiB 预算，超过预算仍通过结果和反馈包定位附件。
+
+本轮未执行 Windows/macOS 安装升级、物理手机、真实麦克风／截图权限或 Linux/macOS PTY 设备验收，亦未将 fixture 记作真实 Agent 多轮体验通过。[既有质量待验项](README.md)保持原状态。

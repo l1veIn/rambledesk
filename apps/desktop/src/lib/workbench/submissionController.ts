@@ -23,7 +23,7 @@ export type SubmissionControllerContext = {
   canCancel: () => boolean
   canApprove?: () => boolean
   prepareFeedback: (requestId: string) => Promise<FeedbackPreparation>
-  prepareWorkbench?: (requestId: string) => Promise<void>
+  prepareWorkbench?: (requestId: string, intent: 'approve' | 'cancel') => Promise<void>
   isInputBusy?: () => boolean
   saveDraftNow: () => Promise<boolean>
   confirmApproval?: (message: string) => boolean
@@ -80,7 +80,7 @@ export function createSubmissionController(context: SubmissionControllerContext)
           context.setPageError(context.tr('Input is still being received. Finish the current input and try again.'))
           return
         }
-        await context.prepareWorkbench?.(requestId)
+        await context.prepareWorkbench?.(requestId, intent)
         if (!current(requestId) || get(context.session).interactionLocked) return
       }
       if (intent === 'approve' ? !canApprove() : !context.canCancel()) return

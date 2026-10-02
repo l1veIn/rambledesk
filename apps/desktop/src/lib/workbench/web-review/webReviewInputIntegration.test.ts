@@ -10,7 +10,7 @@ import { validWebReviewInput } from '../definitions/web_review/input'
 import { applySpeechWriteback } from '../../speech/speechWriteback'
 import { collectFieldSpeechSegments, applyFieldSpeechCleanup } from '../../speech/fieldSpeechSegments'
 import { captureFieldTidy, replaceFieldTidy } from '../../speech/fieldSpeechText'
-import { removeWorkbenchAttachmentReferences } from '../../input/fieldAttachmentText'
+import { removeWorkbenchAttachmentReferences } from '../fields/attachmentReferences'
 
 const annotation: WebReviewAnnotation = {
   id: 'button-note', page_url: 'http://localhost:5173/pricing', viewport: { width: 1280, height: 800 },

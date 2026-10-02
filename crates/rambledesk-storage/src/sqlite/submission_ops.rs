@@ -89,6 +89,13 @@ impl SqliteFeedbackStore {
         let request_attachments =
             load_submission_request_attachments(&mut transaction, request_id).await?;
 
+        visual_feedback_ops::validate_package_attachment(
+            &mut transaction,
+            request_id,
+            workbench.as_ref(),
+        )
+        .await?;
+
         if let Some(source_revision) = row
             .try_get::<Option<i64>, _>("source_revision")
             .map_err(storage_error)?

@@ -19,6 +19,7 @@ import { createAttachmentPreviews } from './attachmentPreviews'
 import { attachmentMarkdown } from '../attachmentMarkdown'
 import { snapshotInputTarget, type InputTarget } from '../domain/inputTarget'
 import { readWorkbenchField } from '../workbenchFields'
+import { createGeneratedAttachmentPersistence } from './generatedAttachment'
 
 export type { AttachmentMessageTone } from './attachmentSession'
 
@@ -337,6 +338,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     requestId: string,
     work: (active: () => boolean) => Promise<boolean>,
     cleanup: () => Promise<void> = async () => {},
+    trackInput = true,
   ): Promise<boolean> {
     const generation = lifecycleGeneration
     const active = () => !disposed && generation === lifecycleGeneration && !targetLocked(requestId)
@@ -358,6 +360,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
       attachmentOperationsPending -= 1
       if (!disposed && generation === lifecycleGeneration && attachmentOperationsPending === 0) context.session.setBusy(false)
     })
+    if (!trackInput) return result
     const receipt = result.then((ok): AttachmentPreparation => {
       if (ok) return { kind: 'ready' }
       const message = `${context.tr('Some attachment input was not added. Import it again, or submit again to continue without it.')} ${context.session.message()}`.trim()
@@ -621,6 +624,12 @@ export function createAttachmentController(context: AttachmentControllerContext)
 
   const refreshPreviews = previewResources.refresh
   const releasePreviews = previewResources.release
+  const persistGeneratedAttachment = createGeneratedAttachmentPersistence({
+    transport: context.transport, getWorkspace: context.getWorkspace,
+    saveDraftNow: context.saveDraftNow, waitForDocument: context.waitForRambleMarkdown,
+    queue: (requestId, work) => queueAttachmentWork(requestId, work, undefined, false),
+    showMutation: showWorkspaceMutation, reconcileFailure: reconcileMutationFailure,
+  })
 
   return {
     mount,
@@ -631,6 +640,7 @@ export function createAttachmentController(context: AttachmentControllerContext)
     acceptAttachmentCandidates,
     importAttachmentCandidates,
     persistAttachmentCandidates,
+    persistGeneratedAttachment,
     reportClientFileError,
     importServerAttachmentPaths,
     startScreenCapture,

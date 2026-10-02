@@ -1,0 +1,15 @@
+{
+  "title": "差异评审",
+  "what_happened": "请针对这份固定 diff 的修改前后行、行范围和改动块留下意见，切换文件并检查恢复与提交结果。无需套用审批流程。",
+  "workbench": {
+    "type": "diff_review", "version": 1,
+    "data": {
+      "title": "评审 CLI 帮助和配置修改", "source_version": "playground-diff-v1",
+      "files": [
+        { "id": "cli-help", "old_path": "src/help.ts", "new_path": "src/help.ts", "diff": "--- a/src/help.ts\n+++ b/src/help.ts\n@@ -1,3 +1,4 @@\n export const help = [\n-  'Use --verbose for details',\n+  'Use --debug for details',\n+  'Add --quiet to hide all errors',\n ]\n" },
+        { "id": "config", "old_path": "config.json", "new_path": "config.json", "diff": "--- a/config.json\n+++ b/config.json\n@@ -1,4 +1,4 @@\n {\n-  \"timeout\": 30000,\n+  \"timeout\": 0,\n   \"retries\": 2\n }\n" }
+      ]
+    }
+  },
+  "attachments": [{ "path": "materials/diff-review.md" }]
+}

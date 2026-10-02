@@ -1,6 +1,6 @@
 # 工作台文档入口
 
-当前可新建六种正式工作台：`ramble` 自由反馈、`questions` 逐项问答、`document_review` 文稿审阅、`web_review` 网页评审、`terminal` 终端试用和 `sort` 拖动排序。它们共享请求、草稿、反馈列与提交生命周期，各类型拥有独立业务视图。单题 `questions` 覆盖方案单选；旧 `single_choice` 仅保留合同兼容，`rating_review` 仅用于开发验收，不计入正式类型数量。
+当前可新建八种正式工作台：`ramble` 自由反馈、`questions` 逐项问答、`document_review` 文稿审阅、`web_review` 网页评审、`terminal` 终端试用、`sort` 拖动排序、`visual_feedback` 视觉反馈和 `diff_review` 差异评审。它们共享请求、草稿、反馈列与提交生命周期，各类型拥有独立业务视图。单题 `questions` 覆盖方案单选；旧 `single_choice` 仅保留合同兼容，`rating_review` 仅用于开发验收，不计入正式类型数量。
 
 ## 阅读路径
 
@@ -17,6 +17,8 @@
 | 接入网页、选择元素、批注和宽屏评审 | [网页评审](web-review.md) |
 | 让用户试用 CLI、引用输出和保存试用记录 | [终端试用](terminal.md) |
 | 调整条目文字、删除条目和拖动排序 | [排序体验用例](../../playground/workbenches/materials/sort.md) |
+| 在已有图片或空白画布上描绘视觉意见 | [视觉反馈](visual-feedback.md) |
+| 针对 diff 的行、范围或改动块提交批注 | [差异评审](diff-review.md) |
 | 修改正文、答案、批注的输入与异步回填 | [请求级共享输入](shared-input.md) |
 | 修改 Rambelle 首次引导、重看和本地记录 | [工作台使用引导](onboarding.md) |
 | 验证存储兼容或旧版本读取 | [数据兼容](../DATA_COMPATIBILITY.md) |

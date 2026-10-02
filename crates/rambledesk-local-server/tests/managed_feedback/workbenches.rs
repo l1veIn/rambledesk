@@ -44,9 +44,34 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             "questions",
             "document_review",
             "web_review",
-            "terminal"
+            "terminal",
+            "sort",
+            "visual_feedback",
+            "diff_review",
         ]
     );
+    assert!(generic["next_offset"].is_null());
+    for kind in ["sort", "visual_feedback", "diff_review"] {
+        let description: Value = fixture
+            .command(&endpoint, "describe_workbench", json!({"type":kind}))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let mcp_description = fixture
+            .call(
+                &endpoint,
+                &session,
+                "describe_workbench",
+                json!({"type":kind}),
+            )
+            .await?;
+        assert_eq!(description, mcp_description["structuredContent"]);
+        assert_eq!(description["type"], kind);
+        assert!(description["input_schema"].is_object());
+        assert!(description["result_schema"].is_object());
+    }
     let legacy_description = fixture
         .command(
             &endpoint,

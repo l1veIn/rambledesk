@@ -36,7 +36,7 @@ fn revoked() -> CallToolResult {
 impl ManagedRambleDeskMcp {
     #[tool(
         name = "list_workbenches",
-        description = "Browse available capabilities without guessing search terms. Call with {} to see ramble (free feedback), questions (a single choice or multiple questions, with optional custom answers), document_review (annotate an immutable script or speech), web_review (browse a live webpage and annotate elements), and terminal (try a prepared CLI interactively and return its output and screen with feedback notes). For a single choice, use questions with one question and allowOther:false. Returns purpose and result summaries; describe_workbench loads a selected schema. Optional offset/limit paginate."
+        description = "Browse the complete available capability catalog without guessing type names. Call with {} for up to 20 purpose/result summaries, including sorting, visual drawing feedback and immutable diff review. Schemas are loaded separately with describe_workbench. For a single choice use questions with one question and allowOther:false. Optional offset/limit paginate."
     )]
     async fn list_workbenches(
         &self,

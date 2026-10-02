@@ -14,8 +14,8 @@ export type WorkbenchSpec = { type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | TerminalData | RatingReviewData | SortData | Record<string, unknown>;
-export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, } | { "type": "terminal", sessions: Array<TerminalTrialSession>, } | { "type": "rating_review" } & RatingReviewState | { "type": "sort" } & SortState;
+export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | TerminalData | RatingReviewData | SortData | VisualFeedbackData | DiffReviewData | Record<string, unknown>;
+export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, } | { "type": "terminal", sessions: Array<TerminalTrialSession>, } | { "type": "rating_review" } & RatingReviewState | { "type": "sort" } & SortState | { "type": "visual_feedback" } & VisualFeedbackState | { "type": "diff_review" } & DiffReviewState;
 export type WorkbenchPackage = {
 /**
  * None for cancellation or an unavailable structured document.
@@ -25,7 +25,7 @@ result: WorkbenchResult | null, type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | TerminalResult | RatingReviewResult | SortResult | Record<string, unknown>;
+export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | TerminalResult | RatingReviewResult | SortResult | VisualFeedbackResult | DiffReviewResult | Record<string, unknown>;
 export type RambleData = { actions: Array<ActionInput>, };
 export type QuestionsData = { questions: Array<Question>, };
 export type Question = { id: string, prompt: string, label?: string, options: Array<QuestionOption>, allowOther: boolean, };
@@ -130,6 +130,71 @@ items?: Array<SortItem>,
  * Explicitly deleted input item IDs in the original input order.
  */
 removed_ids: Array<string>, };
+export type VisualFeedbackData = { title: string, source_version: string, width: number, height: number,
+/**
+ * Blank canvas background; defaults to white. An image is rendered over it.
+ */
+background_color?: string,
+/**
+ * Exact unique file_name of an immutable request image attachment; null for a blank canvas.
+ */
+image_file_name: string | null, };
+export type VisualFeedbackPoint = {
+/**
+ * Integer canvas pixels, independent of display zoom.
+ */
+x: number, y: number, };
+export type VisualFeedbackAnnotationKind = "freehand" | "arrow" | "rectangle" | "text";
+export type VisualFeedbackAnnotation = { id: string, kind: VisualFeedbackAnnotationKind,
+/**
+ * Freehand: 2–2048 points; arrow/rectangle: two endpoints/corners; text: one origin.
+ */
+points: Array<VisualFeedbackPoint>, color: string,
+/**
+ * Stroke width, or text font size, in integer canvas pixels.
+ */
+stroke_width: number,
+/**
+ * Nonblank for text annotations; empty for other shapes.
+ */
+text: string,
+/**
+ * Optional opinion associated with the drawing.
+ */
+body: string, };
+export type VisualFeedbackState = { annotations: Array<VisualFeedbackAnnotation>,
+/**
+ * Current request's feedback PNG attachment; clear whenever the drawing changes.
+ */
+composite_attachment_id: string | null, };
+export type VisualFeedbackResult = { source_version: string, width: number, height: number, annotations: Array<VisualFeedbackAnnotation>,
+/**
+ * Resolve this ID through the package manifest attachments to view the composite PNG.
+ */
+composite_attachment_id: string, };
+export type DiffReviewData = { title: string, source_version: string, files: Array<DiffReviewFile>, };
+export type DiffReviewFile = { id: string, old_path: string, new_path: string,
+/**
+ * Immutable, single-file unified diff. At most 120000 Unicode scalars per file, 500000 total.
+ */
+diff: string, };
+export type DiffReviewSide = "old" | "new";
+export type DiffReviewAnchor = { file_id: string,
+/**
+ * Zero-based index in the immutable file's hunk sequence.
+ */
+hunk_index: number, side: DiffReviewSide,
+/**
+ * Both null for a whole hunk, otherwise a one-based inclusive line range on this side.
+ */
+start_line: number | null, end_line: number | null, };
+export type DiffReviewComment = { id: string, anchor: DiffReviewAnchor,
+/**
+ * Drafts may be empty while editing; published comments must contain visible text.
+ */
+body: string, };
+export type DiffReviewState = { comments: Array<DiffReviewComment>, };
+export type DiffReviewResult = { source_version: string, comments: Array<DiffReviewComment>, };
 export type TerminalSessionStatus = "running" | "exited" | "stopped";
 export type OpenTerminalSessionInput = { request_id: string, cols: number, rows: number, };
 export type TerminalSessionInput = { request_id: string, session_id: string, };

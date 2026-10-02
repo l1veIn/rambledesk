@@ -24,7 +24,8 @@ import type {
   SaveDraftInput,
 } from '../feedback'
 import { previewFixtures, previewWorkspaceFor } from './previewFixtures'
-import { registeredWorkbenchExamples, previewExampleAttachments } from '../workbench/definitions/examples'
+import { findWorkbenchExample, previewExampleAttachments } from '../workbench/definitions/examples'
+import { PreviewAttachmentBytes, previewMediaType } from './previewAttachmentBytes'
 import { TerminalPreviewRuntime } from './terminalPreviewFixture'
 
 export type PreviewApplicationOptions = { workspace?: string | null; origin?: string }
@@ -45,7 +46,9 @@ export class PreviewApplicationTransport implements ApplicationTransport {
   readonly #submitted = new Set<string>()
   readonly #workspaceOverrides = new Map<string, FeedbackWorkspaceView>()
   readonly #terminal = new TerminalPreviewRuntime()
-  readonly #requestMaterial = new Map<string, string>()
+  readonly #requestMaterial = new PreviewAttachmentBytes()
+  readonly #feedbackMaterial = new PreviewAttachmentBytes()
+  #attachmentSequence = 0
 
   constructor(private readonly capabilityManifest: CapabilityManifest, options: PreviewApplicationOptions = {}) {
     for (const request of previewFixtures.requests) this.#requests.set(request.request_id, { ...request })
@@ -55,16 +58,15 @@ export class PreviewApplicationTransport implements ApplicationTransport {
     }
     const scenario = options.workspace ?? (typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('workspace') : null)
-    const example = registeredWorkbenchExamples.find((item) => item.spec.type === scenario)
+    const example = findWorkbenchExample(scenario)
     if (example) {
       const base = structuredClone(previewFixtures.workspace)
       const request = { ...base.request, title: example.title,
         what_happened: example.markdown,
         status: 'in_progress' as const, resolution: null, allow_finish: false, final_summary: null }
-      const requestAttachments = previewExampleAttachments(example).map(({ markdown, ...attachment }, position) => {
-        this.#requestMaterial.set(attachment.attachment_id, markdown)
-        return { ...attachment, media_type: 'text/markdown', byte_size: new TextEncoder().encode(markdown).byteLength,
-          sha256: `preview-${attachment.attachment_id}`, position }
+      const requestAttachments = previewExampleAttachments(example).map(({ contents, ...attachment }) => {
+        this.#requestMaterial.put(request.request_id, attachment.attachment_id, contents)
+        return attachment
       })
       this.#requests.set(request.request_id, request)
       this.#workspaceOverrides.set(request.request_id, { ...base, request, workbench: structuredClone(example.createSpec?.(options) ?? example.spec),
@@ -111,9 +113,15 @@ export class PreviewApplicationTransport implements ApplicationTransport {
         return this.#terminal.call(name, input as Parameters<TerminalPreviewRuntime['call']>[1])
       case 'readRequestAttachment': {
         const { request_id, attachment_id } = input as { request_id: string; attachment_id: string }
-        if (!this.#workspaceFor(request_id).request_attachments.some((item) => item.attachment_id === attachment_id)
-          || !this.#requestMaterial.has(attachment_id)) throw new Error('预览附件不存在。')
-        return new TextEncoder().encode(this.#requestMaterial.get(attachment_id)!).buffer
+        if (!this.#workspaceFor(request_id).request_attachments.some((item) => item.attachment_id === attachment_id)) throw new Error('预览附件不存在。')
+        return this.#requestMaterial.read(request_id, attachment_id)
+      }
+      case 'readFeedbackAttachment': {
+        const { request_id, attachment_id } = input as { request_id: string; attachment_id: string }
+        if (!this.#workspaceFor(request_id).attachments.some((item) => item.attachment_id === attachment_id)) {
+          throw new Error('预览附件不存在。')
+        }
+        return this.#feedbackMaterial.read(request_id, attachment_id)
       }
       case 'listFeedbackInbox':
         return [...this.#requests.values()].filter(
@@ -162,7 +170,12 @@ export class PreviewApplicationTransport implements ApplicationTransport {
                 draft_revision: workspace.draft.saved_revision,
                 feedback_markdown: workspace.draft.body_markdown,
                 feedback_sha256: 'preview',
-                attachments: [],
+                attachments: workspace.attachments.map(({ attachment_id, ...attachment }) => ({
+                  ...attachment, id: attachment_id, path: `attachments/${attachment_id}-${attachment.file_name}`,
+                })),
+                request_attachments: workspace.request_attachments.map(({ attachment_id, ...attachment }) => ({
+                  ...attachment, id: attachment_id, path: `request-attachments/${attachment_id}-${attachment.file_name}`,
+                })),
               },
               markdown: workspace.draft.body_markdown,
               uncooked_markdown: workspace.draft.body_markdown,
@@ -258,25 +271,28 @@ export class PreviewApplicationTransport implements ApplicationTransport {
         return undefined
       }
       case 'deleteFeedbackRequest': {
-        this.#requests.delete((input as { request_id: string }).request_id)
+        const { request_id } = input as { request_id: string }
+        this.#requests.delete(request_id)
+        this.#requestMaterial.removeRequest(request_id)
+        this.#feedbackMaterial.removeRequest(request_id)
         return undefined
       }
       case 'addFeedbackAttachment': {
-        const { request_id, file_name, media_type, contents } = input as {
+        const { request_id, file_name, contents } = input as {
           request_id: string
           file_name: string
-          media_type: string
           contents: ArrayBuffer
         }
         const workspace = this.#workspaceFor(request_id)
         const attachment: AttachmentView = {
-          attachment_id: `preview-${workspace.attachments.length + 1}`,
+          attachment_id: `preview-${++this.#attachmentSequence}`,
           file_name,
-          media_type,
+          media_type: previewMediaType(file_name, contents),
           byte_size: contents.byteLength,
           sha256: 'preview',
           position: workspace.attachments.length,
         }
+        this.#feedbackMaterial.put(request_id, attachment.attachment_id, contents)
         this.#attachments.set(request_id, [...workspace.attachments, attachment])
         return this.#workspaceFor(request_id)
       }
@@ -290,6 +306,7 @@ export class PreviewApplicationTransport implements ApplicationTransport {
           request_id,
           workspace.attachments.filter((attachment) => attachment.attachment_id !== attachment_id),
         )
+        this.#feedbackMaterial.remove(request_id, attachment_id)
         return this.#workspaceFor(request_id)
       }
       case 'reorderFeedbackAttachments': {

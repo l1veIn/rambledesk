@@ -14,6 +14,7 @@ workbench-fixtures = []
 async-trait.workspace = true
 base64.workspace = true
 hex.workspace = true
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 portable-pty.workspace = true
 schemars.workspace = true
 serde.workspace = true

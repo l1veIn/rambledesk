@@ -131,14 +131,14 @@
           </Button>
         {/if}
         {#if onQuote}
-          <Button size="sm" variant="ghost" disabled={!selection.trim() || disabled} onclick={quoteSelection}>
+          <Button size="sm" variant="ghost" data-tour="terminal-quote" disabled={!selection.trim() || disabled} onclick={quoteSelection}>
             <ClipboardCopy class="size-4" />{tr('Quote selected output')}
           </Button>
         {/if}
       {/if}
     </div>
   </header>
-  <div class="terminal-context">
+  <div class="terminal-context" data-tour="terminal-directory">
     <code title={data.cwd}>{data.cwd}</code>
     {#if latest}<span class="terminal-status" data-terminal-status>{tr(busy ? 'Connecting…' : latest.status === 'running' ? 'Running' : latest.status === 'stopped' ? 'Stopped' : 'Exited')}{latest.exit_code !== null ? ` · ${tr('Exit code')} ${latest.exit_code}` : ''}</span>{/if}
   </div>

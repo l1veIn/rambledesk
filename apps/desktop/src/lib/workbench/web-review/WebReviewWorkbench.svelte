@@ -124,7 +124,7 @@
       <button type="button" {disabled} aria-label={tr('Refresh page')} onclick={refreshPage} class="rounded-lg border p-2"><RotateCw class="size-3.5" /></button>
       <button type="button" {disabled} aria-label={tr('Desktop viewport')} title={tr('Desktop viewport')} aria-pressed={viewport.width >= 768} onclick={() => changeViewport({ width: 1440, height: 900 })} class="rounded-lg border p-2 aria-pressed:bg-muted"><Monitor class="size-3.5" /></button>
       <button type="button" {disabled} aria-label={tr('Mobile viewport')} title={tr('Mobile viewport')} aria-pressed={viewport.width < 768} onclick={() => changeViewport({ width: 390, height: 844 })} class="rounded-lg border p-2 aria-pressed:bg-muted"><Smartphone class="size-3.5" /></button>
-      <button type="button" aria-pressed={commentsOpen} onclick={() => commentsOpen = !commentsOpen} class="ml-auto inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs aria-pressed:bg-primary/10"><MessageSquare class="size-3.5" />{tr('Review comments')} · {current.annotations.length}</button>
+      <button type="button" data-tour="web-review-comments" aria-pressed={commentsOpen} onclick={() => commentsOpen = !commentsOpen} class="ml-auto inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs aria-pressed:bg-primary/10"><MessageSquare class="size-3.5" />{tr('Review comments')} · {current.annotations.length}</button>
     </div>
     <div role="status" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" data-web-review-status={frameState.status}>
       <span class:text-emerald-700={connected} class:dark:text-emerald-400={connected}>{tr(connected ? 'Element selection connected' : frameState.status === 'loading' ? 'Connecting…' : 'Preview only')}</span>

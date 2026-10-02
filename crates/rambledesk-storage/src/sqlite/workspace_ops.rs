@@ -64,6 +64,13 @@ impl SqliteFeedbackStore {
                 let stored_body: String = row.try_get("body_markdown").map_err(storage_error)?;
                 if stored_document.as_deref() == Some(document_json) && stored_body == body_markdown
                 {
+                    visual_feedback_ops::validate_saved_attachment(
+                        &mut transaction,
+                        request_id,
+                        workbench_spec_from_row(&request_row)?.as_ref(),
+                        document_json,
+                    )
+                    .await?;
                     return Ok(DraftView {
                         document_json: stored_document,
                         body_markdown: stored_body,
@@ -79,6 +86,13 @@ impl SqliteFeedbackStore {
             workbench_spec_from_row(&request_row)?.as_ref(),
             document_json,
         )?;
+        visual_feedback_ops::validate_saved_attachment(
+            &mut transaction,
+            request_id,
+            workbench_spec_from_row(&request_row)?.as_ref(),
+            document_json,
+        )
+        .await?;
         let next_revision = current_revision + 1;
         let updated = sqlx::query(
             "UPDATE feedback_requests SET \

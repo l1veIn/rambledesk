@@ -66,7 +66,7 @@ pnpm dev
 
 See the [development guide](docs/DEVELOPMENT.md) for running and checking the project, or the [documentation index](docs/README.md) for product, integration, and architecture guides.
 
-The latest source includes six workbench types: free feedback, questions, document review, web review, terminal trials, and drag sorting. They share drafts, voice and attachment input, and submission. The typed workbench framework and this round of specialized workbenches are source development after the published 0.4.0 release; 0.4.0 retains its existing Ramble feedback workflow. Use the [workbench playground](playground/workbenches/README.md) to try the complete Agent flow from source; implementation and compatibility boundaries start at the [workbench documentation](docs/workbench/README.md).
+The latest source includes eight workbench types: free feedback, questions, document review, web review, terminal trials, drag sorting, visual feedback, and diff review. They share drafts, voice and attachment input, and submission. Visual feedback supports drawing on images or a blank canvas; diff review attaches comments to changed lines and hunks. The typed workbench framework and this round of specialized workbenches are source development after the published 0.4.0 release; 0.4.0 retains its existing Ramble feedback workflow. Use the [workbench playground](playground/workbenches/README.md) to try the complete Agent flow from source; implementation and compatibility boundaries start at the [workbench documentation](docs/workbench/README.md).
 
 ## Thanks
 

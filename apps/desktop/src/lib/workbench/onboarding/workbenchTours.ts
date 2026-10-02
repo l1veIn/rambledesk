@@ -1,6 +1,6 @@
 import type { Locale } from '../../preferences'
 
-export type WorkbenchTourId = 'ramble' | 'document_review'
+export type WorkbenchTourId = 'ramble' | 'document_review' | 'web_review' | 'terminal'
 
 export type WorkbenchTourStep = {
   id: string
@@ -84,11 +84,65 @@ const steps: Record<WorkbenchTourId, LocalizedStep[]> = {
       body: ['准备好后，提交这次审阅。批注、删除标记、审阅结论和补充说明会一起发送，再由 Agent 根据反馈修改原稿。', 'Submit when ready. Your comments, removal marks, decision and overall feedback are sent together so the agent can revise the original.'],
     },
   ],
+  web_review: [
+    {
+      id: 'toolbar', target: '[data-web-review-toolbar]',
+      title: ['浏览页面，再选择要批注的元素', 'Browse, then select an element'],
+      body: ['浏览模式可以正常操作页面。切换到选择元素后，点击页面中的元素开始批注；这里也能切换桌面或手机视口，以及打开全屏评审。', 'Browse mode lets you use the page normally. Switch to Select elements and click an element to start a comment. You can also switch desktop or mobile viewports and open a full screen review.'],
+    },
+    {
+      id: 'connection', target: '[data-web-review-status]',
+      title: ['先确认元素选择是否已连接', 'Check the element selection connection'],
+      body: ['连接成功后才能选择元素。页面未接入评审桥接或无法加载时，可以单独打开页面，并在右侧用截图和整体说明反馈。', 'Element selection needs a connected review bridge. If the page has no bridge or cannot load, open it separately and share screenshots and overall feedback on the right.'],
+    },
+    {
+      id: 'surface', target: '[data-web-review-surface]',
+      title: ['意见跟着具体元素保存', 'Keep feedback attached to the element'],
+      body: ['选择元素后，在底部批注卡写下意见，也可以使用语音和附件。批注会保留当时的页面地址、视口和元素信息，便于 Agent 定位。', 'After selecting an element, write your feedback in the comment card at the bottom, or use voice and attachments. The comment preserves its page URL, viewport and element details so the agent can locate it.'],
+    },
+    {
+      id: 'comments', target: '[data-tour="web-review-comments"]',
+      title: ['集中回看，再继续补充', 'Review your comments together'],
+      body: ['从这里查看所有批注。点击一条可以回到对应页面和元素，继续编辑意见；页面后续发生变化时，已经捕获的信息仍会保留。', 'Open the comment list here. Select a comment to return to its page and element and continue editing. Captured context stays available even if the page later changes.'],
+    },
+    {
+      id: 'submit', target: '[data-feedback-actions]',
+      title: ['批注和整体反馈一起提交', 'Send comments and overall feedback'],
+      body: ['检查批注，在右侧补充整体说明，准备好后提交反馈。引导只说明操作，不会替你选择元素或创建批注；标题旁可以随时重看。', 'Check your comments, add any overall feedback on the right, then submit when ready. This guide explains the controls without selecting elements or creating comments. Reopen it beside the title at any time.'],
+    },
+  ],
+  terminal: [
+    {
+      id: 'directory', target: '[data-tour="terminal-directory"]',
+      title: ['确认这次试用的工作目录', 'Check the trial directory'],
+      body: ['终端会在这里显示的目录中运行。先阅读请求中的体验说明和命令，再开始这次 CLI 试用。', 'The terminal runs in the directory shown here. Read the request instructions and suggested commands before starting the CLI trial.'],
+    },
+    {
+      id: 'toolbar', target: '[data-terminal-toolbar]',
+      title: ['主动启动，按需停止或重开', 'Start, stop or restart when ready'],
+      body: ['点击开始终端才会创建试用会话。停止或退出后可以重新开始，各轮记录都会保留；也能打开全屏试用，或通过样式按钮选择预置外观。', 'Start terminal creates the trial session. After stopping or exiting, restart to begin another trial while keeping earlier records. You can also open a full screen trial or choose a preset terminal appearance.'],
+    },
+    {
+      id: 'surface', target: '[data-terminal-surface]',
+      title: ['在真实终端里体验 CLI', 'Try the CLI in a real terminal'],
+      body: ['启动后在这里输入命令，检查帮助、交互提示和错误信息，也可以试用全屏文字界面。普通工作台和全屏页签继续同一个终端会话。', 'Once started, enter commands here to check help, prompts and errors, or try a full screen text interface. The normal workbench and full screen tab continue the same terminal session.'],
+    },
+    {
+      id: 'quote', target: '[data-tour="terminal-quote"]',
+      title: ['选中输出，把证据引用到反馈中', 'Quote selected output into your feedback'],
+      body: ['在终端中选中相关输出，再点击引用选中输出，把这段内容放到右侧正文，接着说明观察或问题。没有选中内容时，这个按钮会暂时禁用。', 'Select relevant terminal output, then use Quote selected output to add it to the feedback on the right. Explain your observation or issue alongside it. The button is disabled until output is selected.'],
+    },
+    {
+      id: 'submit', target: '[data-feedback-actions]',
+      title: ['说明体验结果，连同记录提交', 'Send your experience and trial records'],
+      body: ['在右侧写下体验结果并提交。提交会收尾仍在运行的终端，并保存试用输出和最后的画面；引导本身不会启动终端或执行命令。', 'Write your experience on the right and submit when ready. Submission finishes any running terminal and preserves trial output and the final screen. This guide never starts a terminal or runs commands.'],
+    },
+  ],
 }
 
 /** Only workbenches with an authored guide participate in first-use onboarding. */
 export function getWorkbenchTour(type: string | null | undefined, locale: Locale): WorkbenchTour | null {
-  if (type !== 'ramble' && type !== 'document_review') return null
+  if (type !== 'ramble' && type !== 'document_review' && type !== 'web_review' && type !== 'terminal') return null
   const zh = locale === 'zh-CN'
   const language = zh ? 0 : 1
   return {

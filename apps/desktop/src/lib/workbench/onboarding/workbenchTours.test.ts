@@ -3,12 +3,12 @@ import { getWorkbenchTour } from './workbenchTours'
 
 describe('workbench guides', () => {
   it('does not create a guide for unrelated or future workbench types', () => {
-    for (const type of ['questions', 'future-workbench', '', undefined, null]) {
+    for (const type of ['questions', 'sort', 'visual_feedback', 'diff_review', 'future-workbench', '', undefined, null]) {
       expect(getWorkbenchTour(type, 'zh-CN')).toBeNull()
     }
   })
 
-  it.each(['ramble', 'document_review'])('keeps %s step identity stable across locale changes', (type) => {
+  it.each(['ramble', 'document_review', 'web_review', 'terminal'])('keeps %s step identity stable across locale changes', (type) => {
     const chinese = getWorkbenchTour(type, 'zh-CN')!
     const english = getWorkbenchTour(type, 'en')!
     expect(chinese.steps.map(({ id, target }) => ({ id, target })))

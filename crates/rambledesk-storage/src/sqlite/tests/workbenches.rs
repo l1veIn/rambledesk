@@ -9,6 +9,7 @@ mod attachments;
 #[cfg(feature = "workbench-fixtures")]
 mod rating_review;
 mod terminal;
+mod visual_diff;
 mod web_review;
 
 // Compatibility fixtures must not rely on the catalog for new requests.
@@ -48,21 +49,25 @@ fn original_workbench_example(kind: &str) -> WorkbenchSpec {
 #[test]
 fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
     let catalog = list_workbenches(&ListWorkbenchesInput::default()).unwrap();
+    let mut expected = vec![
+        "ramble",
+        "questions",
+        "document_review",
+        "web_review",
+        "terminal",
+    ];
+    #[cfg(feature = "workbench-fixtures")]
+    expected.push("rating_review");
+    expected.extend(["sort", "visual_feedback", "diff_review"]);
     assert_eq!(
         catalog
             .workbenches
             .iter()
             .map(|entry| entry.kind)
             .collect::<Vec<_>>(),
-        [
-            "ramble",
-            "questions",
-            "document_review",
-            "web_review",
-            "terminal"
-        ]
+        expected
     );
-    assert_eq!(catalog.next_offset, Some(5));
+    assert_eq!(catalog.next_offset, None);
     let page = list_workbenches(&ListWorkbenchesInput {
         limit: Some(1),
         ..Default::default()
@@ -117,6 +122,8 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
         "web_review",
         "terminal",
         "sort",
+        "visual_feedback",
+        "diff_review",
     ] {
         let description = describe_workbench(&DescribeWorkbenchInput {
             kind: kind.into(),
@@ -135,7 +142,15 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
             rambledesk_core::workbench_actions(&roundtrip)
                 .unwrap()
                 .is_empty(),
-            matches!(kind, "document_review" | "web_review" | "terminal" | "sort")
+            matches!(
+                kind,
+                "document_review"
+                    | "web_review"
+                    | "terminal"
+                    | "sort"
+                    | "visual_feedback"
+                    | "diff_review"
+            )
         );
     }
 }
@@ -395,7 +410,7 @@ async fn submission_distinguishes_no_human_input_from_incomplete_workbench() {
                     if notes.trim().is_empty() {
                         "Provide workbench input or write feedback before submitting"
                     } else {
-                        "Complete the workbench questions or selection before submitting; notes are optional"
+                        "Complete or correct the workbench input before submitting; notes are optional"
                     }
                 );
             }

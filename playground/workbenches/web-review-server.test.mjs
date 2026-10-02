@@ -19,7 +19,7 @@ test('prepares the complete playground or a single workbench and refuses to repl
     for (const entry of ['prepare.mjs', 'fixtures', 'materials']) cpSync(join(root, entry), join(directory, entry), { recursive: true })
     const check = command('prepare.mjs', ['check'], directory)
     assert.equal(check.submitted, false)
-    assert.deepEqual(check.fixtures.map(fixture => fixture.type), ['ramble', 'questions', 'questions', 'document_review', 'web_review', 'terminal', 'sort'])
+    assert.deepEqual(check.fixtures.map(fixture => fixture.type), ['ramble', 'questions', 'questions', 'document_review', 'web_review', 'terminal', 'visual_feedback', 'visual_feedback', 'diff_review', 'sort'])
     const prepared = command('prepare.mjs', ['new'], directory)
     const runPath = join(prepared.directory, 'run.json')
     const run = readJson(runPath)

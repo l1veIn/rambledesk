@@ -7,6 +7,8 @@ import { singleChoiceDefinition } from './single_choice/definition'
 import { documentReviewDefinition } from './document_review/definition'
 import { webReviewDefinition } from './web_review/definition'
 import { terminalDefinition } from './terminal/definition'
+import { visualFeedbackDefinition } from './visual_feedback/definition'
+import { diffReviewDefinition } from './diff_review/definition'
 import { record, text } from './stateShape'
 
 const developmentDefinitions: readonly WorkbenchDefinition[] = import.meta.env.DEV &&
@@ -18,6 +20,7 @@ export const workbenchDefinitions: readonly WorkbenchDefinition[] = [
   rambleDefinition, questionsDefinition, singleChoiceDefinition, documentReviewDefinition, webReviewDefinition, terminalDefinition,
   ...developmentDefinitions,
   sortDefinition,
+  visualFeedbackDefinition, diffReviewDefinition,
 ]
 export function getWorkbenchDefinition(type: string, version = 1): WorkbenchDefinition | undefined {
   return workbenchDefinitions.find((definition) => definition.type === type && definition.version === version)

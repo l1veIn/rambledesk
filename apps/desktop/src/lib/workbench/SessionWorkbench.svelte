@@ -31,7 +31,7 @@
     SubmitStage,
   } from '../domain/sessionPhases'
   import { provideInputTools, type InputToolsState } from '../input/inputToolsContext'
-  import { removeWorkbenchAttachmentReferences } from '../input/fieldAttachmentText'
+  import { removeWorkbenchAttachmentReferences } from './fields/attachmentReferences'
   import type { InputTarget } from '../domain/inputTarget'
   import RequestAttachmentPreview from '../workspace/RequestAttachmentPreview.svelte'
   import RegisteredWorkbench from './RegisteredWorkbench.svelte'

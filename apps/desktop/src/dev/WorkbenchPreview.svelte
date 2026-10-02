@@ -26,9 +26,10 @@
   import { previewHostProfile } from './agentPreviewFixtures'
   import { workbenchExamples, workbenchPreviewAttachments, workbenchPreviewLabels, workbenchPreviewWorkspace } from './workbenchPreviewFixtures'
   import { TerminalPreviewRuntime } from '$lib/preview/terminalPreviewFixture'
+  import { findWorkbenchExample, registeredWorkbenchExamples } from '$lib/workbench/definitions/examples'
 
   const initialType = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('type') : null
-  let index = initialType === 'single_question' ? 2 : Math.max(0, workbenchExamples.findIndex((spec) => spec.type === initialType))
+  let index = initialType === 'single_question' ? 2 : Math.max(0, registeredWorkbenchExamples.indexOf(findWorkbenchExample(initialType)!))
   let workspace = workbenchPreviewWorkspace(index)
   let view: SessionWorkbench
   let activeActionId: string | null = null
@@ -77,7 +78,7 @@
       const attachment = request_id === workspace.request.request_id && workspace.request_attachments.some((item) => item.attachment_id === attachment_id)
         ? workbenchPreviewAttachments.find((item) => item.attachment_id === attachment_id) : undefined
       if (!attachment) throw new Error('预览附件不存在。')
-      return new TextEncoder().encode(attachment.markdown).buffer
+      return attachment.contents.slice(0)
     })
     .handle('readFeedbackAttachment', ({ attachment_id }) => {
       const contents = attachmentContents.get(attachment_id)

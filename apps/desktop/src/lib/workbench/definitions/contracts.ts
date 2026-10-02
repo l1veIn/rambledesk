@@ -1,21 +1,26 @@
 import type { Component } from 'svelte'
 import type { ApplicationTransport } from '../../application/applicationTransport'
-import type { FeedbackWorkspaceView } from '../../feedback'
+import type { AttachmentView, FeedbackWorkspaceView } from '../../feedback'
 import type { WorkbenchSpec, WorkbenchState } from '../../generated/feedback'
 import type { WorkbenchFieldAdapter } from '../fields/contracts'
 
+export type WorkbenchSubmissionIntent = 'submit' | 'approve' | 'cancel'
 export type WorkbenchController = {
-  prepareSubmission: () => Promise<void>
+  prepareSubmission: (intent?: WorkbenchSubmissionIntent) => Promise<void>
   attach?: (binding: unknown) => () => void
   dispose: () => void
 }
 export type WorkbenchControllerContext = {
   requestId: string
   getState: () => WorkbenchState | null
+  getWorkspace?: () => FeedbackWorkspaceView | null
   updateState: (state: WorkbenchState) => void
   isEditable: () => boolean
   setBusy: (busy: boolean) => void
-  runtime: { transport: ApplicationTransport }
+  runtime: {
+    transport: ApplicationTransport
+    persistGeneratedAttachment?: (input: { fileName: string; contents: ArrayBuffer }) => Promise<AttachmentView>
+  }
 }
 export type WorkbenchViewHost = {
   requestId: string
@@ -33,7 +38,11 @@ export type WorkbenchViewContext = {
   activeActionId: string | null
   host: WorkbenchViewHost
 }
+export type WorkbenchExampleAttachment = { id?: string; name: string; mimeType?: string } &
+  ({ content: string; contentsBase64?: never } | { content?: never; contentsBase64: string })
 export type WorkbenchExample = {
+  /** Unique optional selector for another example of the same type; development previews only. */
+  key?: string
   order: number
   title: string
   markdown: string
@@ -41,7 +50,7 @@ export type WorkbenchExample = {
   createSpec?: (options: { origin?: string }) => WorkbenchSpec
   state?: WorkbenchState
   actions?: readonly FeedbackWorkspaceView['actions'][number][]
-  attachments?: readonly { id?: string; name: string; content: string; mimeType?: string }[]
+  attachments?: readonly WorkbenchExampleAttachment[]
 }
 export type WorkbenchDefinition = {
   type: string

@@ -21,13 +21,16 @@
 Changes in development after RambleDesk 0.4.0
 
 Human feedback workbenches
-- Six production workbench types cover free feedback, questions, document review, web review, terminal trials, and drag sorting. Use a single question for new single-choice requests; existing single_choice requests keep their original contracts and results.
+- Eight production workbench types cover free feedback, questions, document review, web review, terminal trials, drag sorting, visual feedback, and diff review. Use a single question for new single-choice requests; existing single_choice requests keep their original contracts and results.
 - Feedback text, custom answers, and review comments share voice, paste, screenshot, attachment, and speech-tidying input. Each input stays with the request and field where it started; drafts save text and structured state together.
 - Document review keeps the source unchanged, supports continuing paragraph comments and suggested wording, and requires an explicit review decision. Paragraph removal is a reversible suggestion.
 - Web review opens the actual page, captures element comments, and keeps the same page and draft when moving between ordinary and expanded tabs. Cross-origin development pages must load the review bridge and permit embedding.
 - Terminal trials use a real PTY on the backend machine. Start or restart explicitly, retain up to 16 trials per request, quote selected output into feedback, and stop and drain the terminal before submission.
 - Terminal appearance offers four color presets. Changes apply immediately, preserve the running trial, and share a saved preference across ordinary, expanded, and history views.
 - Drag sorting supports keyboard and pointer reordering, label edits, deletion and restoration. Submitted results keep final labels, order, and deleted IDs; sorting stays in the ordinary view.
+- Visual feedback supports freehand strokes, arrows, rectangles, and text on a saved image or blank canvas. Drafts retain editable annotations; submission saves a composed PNG and structured feedback.
+- Diff review attaches comments to old or new lines, line ranges, or hunks in an immutable file diff. Overall feedback shares the ordinary submission flow without imposing an approval workflow.
+- Web review and terminal trials now offer first-use guides and a Show guide entry. Guides wait for the workbench view and explain controls without starting a terminal or creating comments.
 
 Workspace and extension development
 - Request context and materials stay above the workbench's scrolling content. The feedback column shares one draft and submission flow with every type.
@@ -36,17 +39,19 @@ Workspace and extension development
 - A workbench scaffold adds type-owned contracts, rules, fields, views, and playground materials through two shared registration files. The rating_review acceptance example is restricted to development builds.
 
 Acceptance boundaries
-- The playground covers six production types in seven scenarios, followed by a summary request. Preview fixtures and automated checks do not establish microphone, screenshot, physical-phone, or cross-platform PTY compatibility.
+- The playground covers eight production types in ten scenarios, including blank-canvas drawing and image annotation, followed by a summary request. Preview fixtures and automated checks do not establish microphone, screenshot, physical-phone, or cross-platform PTY compatibility.
 - The typed workbench framework and this round of specialized workbenches are source development after the published 0.4.0 release, which retains its existing Ramble workflow. Release version, platform artifacts, and installation acceptance will be recorded for the next release.
 
 中文摘要
-- 新增六种正式工作台：自由反馈、逐项问答、文稿审阅、网页评审、终端试用和拖动排序。新单选使用单题问答，旧 single_choice 请求保留原合同与结果。
+- 新增八种正式工作台：自由反馈、逐项问答、文稿审阅、网页评审、终端试用、拖动排序、视觉反馈和差异评审。新单选使用单题问答，旧 single_choice 请求保留原合同与结果。
 - 正文、答案和批注共享语音、粘贴、截图、附件与语音整理；已开始的输入固定原请求和字段，正文与结构化状态共同保存。
 - 文稿审阅保留原稿，支持批注续写、建议改写、可恢复删除线和显式整稿判断；网页评审保留真实网页、元素意见及普通/全屏页签往返状态，跨源开发页需接入 bridge 并允许嵌入。
 - 终端运行在后端主机，主动开始或重启，每请求最多保存 16 轮，选中输出可引用到正文，提交前停止并收尾输出。排序支持拖动、键盘、名称编辑、删除与恢复，结果保留最终名称、顺序及删除 ID，普通视图无全屏入口。
 - 终端新增四种配色预设，切换即时生效并保留正在运行的试用，普通、全屏和历史视图共用已保存的样式。请求页面三列表头高度统一，收起请求栏时隐藏筛选按钮和数量，保留请求快捷入口。
+- 视觉反馈支持已有图片和空白画布上的简笔、箭头、矩形与文字，草稿保留可编辑标注，提交保存合成 PNG；差异评审将批注绑定到固定 diff 的修改前后行、行范围或改动块，具体流程由 Agent 编排。
+- 网页评审和终端试用增加首次使用引导及手动重看入口，等待业务视图加载完成后出现，不自动创建批注、启动终端或执行命令。
 - 公共情况说明和材料固定在业务区上方；普通类型通过两份共享注册文件扩展，脚手架默认关闭全屏，rating_review 仅供开发验收。
-- Playground 用七个场景覆盖六种正式类型，再以汇总请求收尾；自动化与预览不能替代真实设备验收。类型化框架与本轮专用工作台扩展属于 0.4.0 之后的源码开发，已发布的 0.4.0 保留既有 Ramble 流程。
+- Playground 用十个场景覆盖八种正式类型，分别体验空白画布和图片批注，再以汇总请求收尾；自动化与预览不能替代真实设备验收。类型化框架与本轮专用工作台扩展属于 0.4.0 之后的源码开发，已发布的 0.4.0 保留既有 Ramble 流程。
 
 ## v0.4.0
 

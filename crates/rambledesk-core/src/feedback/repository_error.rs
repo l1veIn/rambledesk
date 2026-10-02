@@ -16,6 +16,8 @@ pub enum RepositoryError {
     DraftEmpty,
     #[error("workbench answers are incomplete or invalid")]
     WorkbenchIncomplete,
+    #[error("visual feedback composite image is invalid or unavailable")]
+    WorkbenchImageInvalid,
     #[error("workbench contract is unsupported and read-only")]
     WorkbenchUnsupported,
     #[error("attachment was not found")]

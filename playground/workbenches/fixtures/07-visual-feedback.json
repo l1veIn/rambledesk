@@ -1,0 +1,9 @@
+{
+  "title": "视觉反馈 · 空白画布",
+  "what_happened": "请在空白画布上简单描绘你希望的页面布局，试用简笔、箭头、矩形、文字和撤销，再提交视觉指引。",
+  "workbench": {
+    "type": "visual_feedback", "version": 1,
+    "data": { "title": "画出你希望的布局", "source_version": "playground-visual-blank-v1", "width": 800, "height": 500, "background_color": "#fff8ed", "image_file_name": null }
+  },
+  "attachments": [{ "path": "materials/visual-feedback.md" }]
+}

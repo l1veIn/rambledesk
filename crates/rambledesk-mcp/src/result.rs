@@ -143,6 +143,11 @@ async fn feedback_result(
         object.insert("host".to_owned(), serde_json::Value::String(host));
     }
 
+    let preview = if let Some(package) = package.as_ref() {
+        crate::visual_feedback::composite_preview(package).await
+    } else {
+        None
+    };
     if let Some(package) = package {
         object.insert(
             "feedback_package".to_owned(),
@@ -152,6 +157,9 @@ async fn feedback_result(
 
     let mut result = CallToolResult::structured(structured);
     result.content = vec![ContentBlock::text(summary)];
+    if let Some(preview) = preview {
+        result.content.push(preview);
+    }
     result
 }
 

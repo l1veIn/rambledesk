@@ -32,6 +32,7 @@
 
 ## 按任务复验
 
+- [视觉反馈与差异评审](WORKBENCH_VISUAL_DIFF_ACCEPTANCE.md)：2026-10-02 的 Windows 源码检查、固定材料浏览器观察和容量边界。
 - [隔离反馈夹具](FEEDBACK_ACCEPTANCE.md)：真实 HTTP、SQLite、CAS、发布包与浏览器下载。
 - [性能测量](PERFORMANCE_ACCEPTANCE.md)：固定构建、数据集、预算和资源观察。
 - [ACP 后端探针](../ACP_BACKEND_PROBE.md)：真实 Agent、双会话隔离、续接和恢复；fixture 不是模型证据。

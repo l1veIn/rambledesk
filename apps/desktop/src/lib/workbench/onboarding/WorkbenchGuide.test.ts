@@ -52,6 +52,14 @@ beforeEach(() => {
     <button data-tour="review-comment">Add comment</button>
     <button data-tour="review-delete">Delete paragraph</button>
     <div data-tour="review-verdict">Review decision</div>
+    <div data-web-review-toolbar>Browse and select elements</div>
+    <div data-web-review-status="loading">Connecting</div>
+    <div data-web-review-surface>Preview page</div>
+    <button data-tour="web-review-comments">Review comments</button>
+    <div data-tour="terminal-directory">Trial directory</div>
+    <div data-terminal-toolbar><button>Start terminal</button></div>
+    <div data-terminal-surface>Terminal</div>
+    <button data-tour="terminal-quote" disabled>Quote selected output</button>
     <button data-feedback-actions>Submit feedback</button>
   `
   document.body.append(scope)
@@ -65,8 +73,8 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-function open(initial: { kind?: string; requestId?: string; disabled?: boolean; scope?: HTMLElement } = {}) {
-  const state = writable({ kind: 'ramble', requestId: 'request-1', disabled: false, scope, ...initial })
+function open(initial: { kind?: string; requestId?: string; disabled?: boolean; ready?: boolean; scope?: HTMLElement } = {}) {
+  const state = writable({ kind: 'ramble', requestId: 'request-1', disabled: false, ready: true, scope, ...initial })
   const props = fromStore(state)
   const host = document.createElement('div')
   scope.append(host)
@@ -74,6 +82,7 @@ function open(initial: { kind?: string; requestId?: string; disabled?: boolean; 
     get kind() { return props.current.kind },
     get requestId() { return props.current.requestId },
     get disabled() { return props.current.disabled },
+    get ready() { return props.current.ready },
     get scope() { return props.current.scope },
   } })
   return state
@@ -93,11 +102,11 @@ describe('workbench first-use guide', () => {
     expect(dialog()).toBeNull()
   })
 
-  it('navigates all steps and completes without clicking or changing the underlying workbench', async () => {
+  it.each(['document_review', 'web_review', 'terminal'])('navigates %s without clicking or changing the underlying workbench', async (kind) => {
     const businessAction = vi.fn()
     scope.querySelectorAll('button').forEach((element) => element.addEventListener('click', businessAction))
-    open({ kind: 'document_review' })
-    const tour = getWorkbenchTour('document_review', 'en')!
+    open({ kind })
+    const tour = getWorkbenchTour(kind, 'en')!
     await vi.waitFor(() => expect(dialog()?.textContent).toContain(tour.steps[0].title))
     button('Next').click()
     await vi.waitFor(() => expect(dialog()?.textContent).toContain(tour.steps[1].title))
@@ -109,10 +118,29 @@ describe('workbench first-use guide', () => {
     }
     button('Get started').click()
     await vi.waitFor(() => expect(dialog()).toBeNull())
-    expect(seen.store!.hasSeen('document_review', 1)).toBe(true)
+    expect(seen.store!.hasSeen(tour.id, 1)).toBe(true)
     expect(businessAction).not.toHaveBeenCalled()
     expect(scope.querySelector('input')!.value).toBe('Existing feedback')
     expect(scope.querySelector('[data-review-text]')!.textContent).toBe('Original paragraph')
+  })
+
+  it('waits for the lazy view, then starts the current type without consuming first use', async () => {
+    const state = open({ kind: 'terminal', ready: false })
+    await tick()
+    expect(dialog()).toBeNull()
+    expect(trigger().disabled).toBe(true)
+    expect(seen.store!.hasSeen('terminal', 1)).toBe(false)
+    state.update((current) => ({ ...current, kind: 'web_review', requestId: 'request-2' }))
+    await tick()
+    expect(dialog()).toBeNull()
+    state.update((current) => ({ ...current, ready: true }))
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Browse, then select an element'))
+    expect(seen.store!.hasSeen('terminal', 1)).toBe(false)
+    button('Skip guide').click()
+    await vi.waitFor(() => expect(dialog()).toBeNull())
+    expect(seen.store!.hasSeen('web_review', 1)).toBe(true)
+    state.update((current) => ({ ...current, kind: 'terminal', requestId: 'request-3' }))
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Check the trial directory'))
   })
 
   it('keeps first-use completion separate for each workbench and supports manual replay', async () => {

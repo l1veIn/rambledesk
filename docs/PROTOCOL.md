@@ -59,7 +59,7 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 
 ### 工作台发现与类型合同
 
-1. `list_workbenches({offset?, limit?})` 返回可用的第一方类型目录：`type`、`version`、`name`、`purpose`、`returns` 与 `interaction`。默认每页 5 项，最多 20 项；`next_offset` 表示下一页。目录不内嵌各类型完整 schema。
+1. `list_workbenches({offset?, limit?})` 返回可用的第一方类型目录：`type`、`version`、`name`、`purpose`、`returns` 与 `interaction`。默认每页 20 项，最多 20 项；`next_offset` 表示下一页。目录不内嵌各类型完整 schema。
 2. `describe_workbench({type, version?})` 返回所选类型的输入 schema、结果 schema、示例与说明。`version` 省略时当前选择 v1；已知合同可直接创建，无须每次重复发现。
 3. `request_feedback` 使用同一持久请求生命周期。类型、版本与输入不匹配 MUST 在持久化之前以 `INVALID_ARGUMENT` 拒绝，不能静默改成 Ramble。
 
@@ -73,8 +73,10 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 | `web_review` v1 | 浏览真实网页，对选中元素就地批注并集中回看；网页需允许嵌入，跨源页面需接入评审桥接脚本。 | `source_version, annotations`，每条保留页面 URL、视口、元素定位和意见；详见[网页评审](workbench/web-review.md)。 |
 | `terminal` v1 | 在请求目录中亲自试用 CLI，从体验 Markdown 复制命令，输出可引用到反馈正文。 | `sessions`，保留目录、shell、尺寸、ANSI 转录、最新画面与会话终态；详见[终端试用](workbench/terminal.md)。 |
 | `sort` v1 | 对条目拖动排序、编辑名称、删除和恢复。 | `order`、同序的最终 `items` 与 `removed_ids`；显式删除全部条目可返回空列表，旧结果仅含 `order` 时按原输入名称解释。 |
+| `visual_feedback` v1 | 在固定图片或原生空白画布上绘制视觉意见。 | 来源版本、画布尺寸、结构化标注和合成图片附件；详见[视觉反馈](workbench/visual-feedback.md)。 |
+| `diff_review` v1 | 针对固定 diff 的修改前后行、行范围或改动块批注。 | 来源版本与带精确 diff 锚点的批注；详见[差异评审](workbench/diff-review.md)。 |
 
-发现目录提供上述六种正式类型。新方案选择请求使用 `questions`，不再创建独立 `single_choice` 工作台。`describe_workbench(single_choice)` 提示改用单题问答。开发 feature 另有 `rating_review` 验收样例，不计入正式数量。
+发现目录提供上述八种正式类型。新方案选择请求使用 `questions`，不再创建独立 `single_choice` 工作台。`describe_workbench(single_choice)` 提示改用单题问答。开发 feature 另有 `rating_review` 验收样例，不计入正式数量。
 
 旧 `single_choice` v1 合同保留兼容：已知旧客户端仍可原样创建/重试，已有请求、草稿和结果保持 `selected_option_id` 及 `status`，不静默重写为 `answers[]`，以免改变请求幂等比较或结果含义。客户端使用同一个问答视图承载旧单选，兼容层转换展示和交互状态，不迁移持久输入。未回答状态仍不能成功提交。
 

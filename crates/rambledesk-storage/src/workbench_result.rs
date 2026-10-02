@@ -17,7 +17,7 @@ pub(crate) fn validate_saved_draft(
 }
 
 /// Storage owns this envelope codec; the core policy receives parsed domain data.
-fn parse_feedback_draft(document: Option<&str>, strict: bool) -> Option<FeedbackDraft> {
+pub(crate) fn parse_feedback_draft(document: Option<&str>, strict: bool) -> Option<FeedbackDraft> {
     let value: serde_json::Value = serde_json::from_str(document?).ok()?;
     if value["schemaVersion"] != 2 || value["doc"]["type"] != "doc" {
         return None;
