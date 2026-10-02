@@ -1,68 +1,84 @@
 // Local fixture preparation only. Never contacts RambleDesk or submits feedback.
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = dirname(fileURLToPath(import.meta.url))
-const cases = [
-  ['01-ramble.json', 'ramble'],
-  ['02-questions.json', 'questions'],
-  ['03-single-question.json', 'questions'],
-  ['04-document-review.json', 'document_review'],
-  ['05-web-review.json', 'web_review'],
-]
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''))
 const writeJson = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
-function insideRoot(path) {
-  const local = relative(root, path)
+function insideRoot(base, path) {
+  const local = relative(base, path)
   if (!local || local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Path must stay inside the playground')
   return path
 }
 
-function loadCases() {
-  return cases.map(([file, type]) => {
-    const input = readJson(join(root, 'fixtures', file))
-    if (input.workbench?.type !== type || input.workbench.version !== 1 || !input.workbench.data) throw new Error(`${file}: unexpected workbench contract`)
-    if (!input.what_happened || [...input.what_happened].length > 200) throw new Error(`${file}: invalid summary length`)
-    if (input.request_id || input.host_id || input.host_session_id || input.actions || input.allow_finish || input.final_summary) throw new Error(`${file}: scenario must not contain session identity or completion fields`)
-    input.attachments = input.attachments.map((attachment) => ({
+/** New ordinary workbenches add their own JSON fixture; no central type list. */
+export function loadCases(base = root, development = false) {
+  const fixtures = join(base, 'fixtures')
+  const files = readdirSync(fixtures).filter((name) => name.endsWith('.json')).sort()
+    .map((name) => ({ name, path: join(fixtures, name) }))
+  const devFixtures = join(fixtures, 'development')
+  if (development && existsSync(devFixtures)) {
+    files.push(...readdirSync(devFixtures).filter((name) => name.endsWith('.json')).sort()
+      .map((name) => ({ name: `development-${name}`, path: join(devFixtures, name) })))
+  }
+  return files.map(({ name: file, path }) => {
+    const input = readJson(path)
+    const { type, version, data } = input.workbench ?? {}
+    if (typeof type !== 'string' || !/^[a-z][a-z0-9_]*$/.test(type) || !Number.isSafeInteger(version) || version < 1 || !data || typeof data !== 'object' || Array.isArray(data)) throw new Error(`${file}: unexpected workbench contract`)
+    if (typeof input.what_happened !== 'string' || !input.what_happened.trim() || [...input.what_happened].length > 200) throw new Error(`${file}: invalid summary length`)
+    if (['request_id', 'host_id', 'host_session_id', 'actions', 'allow_finish', 'final_summary'].some((key) => key in input)) throw new Error(`${file}: scenario must not contain session identity or completion fields`)
+    // Runtime workbenches may prepare their own resources; ordinary types need no branch.
+    if (type === 'terminal') input.workbench.data.cwd = realpathSync(base)
+    input.attachments = (input.attachments ?? []).map((attachment) => ({
       ...attachment,
-      path: insideRoot(realpathSync(resolve(root, attachment.path))),
+      path: insideRoot(base, realpathSync(resolve(base, attachment.path))),
     }))
-    return { file, type, input }
+    return { file, type, version, input }
   })
 }
 
-try {
-  const command = process.argv[2] ?? 'check'
-  const mode = process.argv[3] ?? 'all'
-  if (!['check', 'new'].includes(command) || !['all', 'web_review'].includes(mode) || process.argv.length > 4) throw new Error('Usage: node prepare.mjs [check|new] [web_review]')
-  const loaded = loadCases().filter(item => mode !== 'web_review' || item.type === 'web_review')
+export function prepare({ command = 'check', mode = 'all', development = false, base = root } = {}) {
+  base = realpathSync(base)
+  if (!['check', 'new'].includes(command) || !/^[a-z][a-z0-9_]*$/.test(mode)) throw new Error('Usage: node prepare.mjs [check|new] [type|all] [--development]')
+  const loaded = loadCases(base, development).filter((item) => mode === 'all' || item.type === mode)
+  if (!loaded.length) throw new Error(`No fixtures for ${mode}${development ? '' : '; development fixtures require --development'}`)
   if (command === 'check') {
-    console.log(JSON.stringify({ fixtures: loaded.map(({ file, type }) => ({ file, type, version: 1 })), attachments: 'all present inside the playground', submitted: false }, null, 2))
-  } else {
-    const runs = join(root, '.runs')
-    const latestPath = join(runs, 'latest.json')
-    if (existsSync(latestPath)) {
-      const latest = readJson(latestPath)
-      if (typeof latest.run_id !== 'string' || !/^[a-zA-Z0-9-]+$/.test(latest.run_id)) throw new Error('Invalid latest run id')
-      const previous = readJson(join(runs, latest.run_id, 'run.json'))
-      if (!['completed', 'cancelled'].includes(previous.status)) throw new Error(`Resume ${latest.run_id} first; reconcile its real request status before starting another run.`)
-    }
-    const runId = `${new Date().toISOString().replace(/[^0-9TZ]/g, '')}-${randomUUID().slice(0, 8)}`
-    const directory = join(runs, runId)
-    mkdirSync(directory, { recursive: true })
-    const stages = loaded.map(({ file, type, input }) => {
-      const requestId = randomUUID()
-      writeJson(join(directory, file), { ...input, ...(mode === 'web_review' ? { title: '网页评审 · 独立体验' } : {}), request_id: requestId })
-      return { file, type, version: 1, request_id: requestId, status: 'prepared', observations: [], unverified: [] }
-    })
-    writeJson(join(directory, 'run.json'), { run_id: runId, created_at: new Date().toISOString(), mode, status: 'running', stages, report_request_id: randomUUID(), followups: [] })
-    writeJson(latestPath, { run_id: runId })
-    console.log(JSON.stringify({ directory, run_id: runId, submitted: false, next: `${mode === 'web_review' ? 'Start the local review page, then send' : 'Send only'} ${stages[0].file} through the current managed session, then hand off.` }, null, 2))
+    return { fixtures: loaded.map(({ file, type, version }) => ({ file, type, version })), attachments: 'all present inside the playground', submitted: false }
   }
-} catch (error) {
-  console.error(error.message)
-  process.exitCode = 1
+  const runs = join(base, '.runs')
+  const latestPath = join(runs, 'latest.json')
+  if (existsSync(latestPath)) {
+    const latest = readJson(latestPath)
+    if (typeof latest.run_id !== 'string' || !/^[a-zA-Z0-9-]+$/.test(latest.run_id)) throw new Error('Invalid latest run id')
+    const previous = readJson(join(runs, latest.run_id, 'run.json'))
+    if (!['completed', 'cancelled'].includes(previous.status)) throw new Error(`Resume ${latest.run_id} first; reconcile its real request status before starting another run.`)
+  }
+  const runId = `${new Date().toISOString().replace(/[^0-9TZ]/g, '')}-${randomUUID().slice(0, 8)}`
+  const directory = join(runs, runId)
+  mkdirSync(directory, { recursive: true })
+  const stages = loaded.map(({ file, type, version, input }, index) => {
+    const requestId = randomUUID()
+    const label = input.title.replace(/^\d+\/\d+\s*·\s*/, '')
+    const title = mode === 'all' ? `${index + 1}/${loaded.length} · ${label}` : `${label} · 独立体验`
+    writeJson(join(directory, file), { ...input, title, request_id: requestId })
+    return { file, type, version, request_id: requestId, status: 'prepared', observations: [], unverified: [] }
+  })
+  writeJson(join(directory, 'run.json'), { run_id: runId, created_at: new Date().toISOString(), mode, development, status: 'running', stages, report_request_id: randomUUID(), followups: [] })
+  writeJson(latestPath, { run_id: runId })
+  return { directory, run_id: runId, submitted: false, next: `Send only ${stages[0].file} through the current managed session, then hand off.` }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const args = process.argv.slice(2)
+    const development = args.includes('--development')
+    const positional = args.filter((arg) => arg !== '--development')
+    if (positional.length > 2 || args.filter((arg) => arg === '--development').length > 1) throw new Error('Usage: node prepare.mjs [check|new] [type|all] [--development]')
+    console.log(JSON.stringify(prepare({ command: positional[0], mode: positional[1], development }), null, 2))
+  } catch (error) {
+    console.error(error.message)
+    process.exitCode = 1
+  }
 }

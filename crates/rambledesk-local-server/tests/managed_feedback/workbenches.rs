@@ -39,7 +39,13 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             .iter()
             .map(|entry| entry["type"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        ["ramble", "questions", "document_review", "web_review"]
+        [
+            "ramble",
+            "questions",
+            "document_review",
+            "web_review",
+            "terminal"
+        ]
     );
     let legacy_description = fixture
         .command(
@@ -59,6 +65,7 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
         "single_choice",
         "document_review",
         "web_review",
+        "terminal",
     ] {
         let mut workbench = if kind == "single_choice" {
             // Already integrated clients keep their original request/result contract.
@@ -123,6 +130,10 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
                 "element":{"selector":"button","tag_name":"button","text":"Continue","rect":{"x":20,"y":30,"width":100,"height":40}},
                 "body":"Make this action clearer"
             }]}),
+            "terminal" => json!({"type":"terminal","sessions":[{
+                "id":"trial-1","cwd":"/prepared/project","shell":"sh","cols":80,"rows":24,
+                "status":"stopped","exit_code":null,"output":"Usage: my-cli","screen":"Usage: my-cli","truncated":false
+            }]}),
             _ => Value::Null,
         };
         let doc =
@@ -131,7 +142,7 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             .save_feedback_draft(rambledesk_core::SaveDraftInput {
                 request_id: request_id.clone(),
                 document_json: doc.to_string(),
-                body_markdown: if kind == "ramble" {
+                body_markdown: if matches!(kind, "ramble" | "terminal") {
                     "Feedback".into()
                 } else {
                     String::new()
@@ -164,7 +175,16 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             .as_str()
             .unwrap();
         assert!(text.contains(manifest_path));
-        if kind == "ramble" {
+        if kind == "terminal" {
+            assert!(text.contains("workbench.result"));
+            assert!(text.contains("Usage: my-cli"));
+            assert!(text.contains("Preview of feedback markdown:\nFeedback"));
+            assert_eq!(
+                result["structuredContent"]["feedback_package"]["manifest"]["workbench"]["result"]
+                    ["sessions"][0]["cols"],
+                80
+            );
+        } else if kind == "ramble" {
             assert!(text.contains("Preview of feedback markdown:\nFeedback"));
             assert!(!text.contains("Preview of structured workbench result"));
         } else {

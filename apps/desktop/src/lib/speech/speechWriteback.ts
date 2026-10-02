@@ -1,7 +1,7 @@
 import { applyDraftOperation, type DraftOperation } from '../draftOperations'
-import type { InputWriteWorkspace } from '../domain/inputTarget'
+import { isWorkbenchFieldDestination, sameInputTarget, type InputWriteWorkspace, type WorkbenchFieldDestination } from '../domain/inputTarget'
 import { decodeFeedbackDraftEnvelope, restoreFeedbackDraftSnapshot, updateFeedbackDraftDocument, type FeedbackDraftSnapshot } from '../feedbackDraftDocument'
-import { resolveWorkbenchPolicy } from '../workbenchPolicy'
+import { resolveWorkbenchDefinition } from '../workbench/definitions/registry'
 import { appendWorkbenchField, readWorkbenchField } from '../workbenchFields'
 import type { SpeechTarget } from './speechTargets'
 import { recordFieldSpeechSegment } from './fieldSpeechSegments'
@@ -22,7 +22,8 @@ type ReviewWriteReceipt = WriteReceiptBase & {
 }
 type QuestionWriteReceipt = WriteReceiptBase & { kind: 'question_answer'; questionId: string }
 type WebReviewWriteReceipt = WriteReceiptBase & { kind: 'web_review_annotation'; annotationId: string }
-type WriteReceipt = ReviewWriteReceipt | QuestionWriteReceipt | WebReviewWriteReceipt
+type FieldWriteReceipt = WriteReceiptBase & { kind: 'workbench_field'; destination: WorkbenchFieldDestination }
+type WriteReceipt = ReviewWriteReceipt | QuestionWriteReceipt | WebReviewWriteReceipt | FieldWriteReceipt
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 
 /** Keep the existing document operation and its speech segment deduplication. */
@@ -37,6 +38,7 @@ function isWriteReceipt(value: unknown): value is WriteReceipt {
     || !Array.isArray(value.mergedIds) || !value.mergedIds.every((id) => typeof id === 'string')) return false
   if (value.kind === 'question_answer') return typeof value.questionId === 'string'
   if (value.kind === 'web_review_annotation') return typeof value.annotationId === 'string'
+  if (value.kind === 'workbench_field') return isWorkbenchFieldDestination(value.destination)
   return value.kind === undefined && typeof value.annotationId === 'string'
     && (value.field === 'body' || value.field === 'replacement') && typeof value.sourceVersion === 'string'
 }
@@ -50,6 +52,11 @@ function readReceipts(value: unknown): WriteReceipt[] {
 }
 
 function sameReceiptDestination(first: WriteReceipt, second: WriteReceipt): boolean {
+  if (first.kind === 'workbench_field' || second.kind === 'workbench_field') return first.kind === 'workbench_field'
+    && second.kind === 'workbench_field' && sameInputTarget(
+      { requestId: first.requestId, requestTitle: '', destination: first.destination },
+      { requestId: second.requestId, requestTitle: '', destination: second.destination },
+    )
   if (first.kind === 'question_answer' || second.kind === 'question_answer') return first.kind === 'question_answer'
     && second.kind === 'question_answer' && first.questionId === second.questionId
   if (first.kind === 'web_review_annotation' || second.kind === 'web_review_annotation') return first.kind === 'web_review_annotation'
@@ -84,7 +91,7 @@ export function applySpeechWriteback(workspace: SpeechWriteWorkspace, input: Spe
   if (workspace.request.request_id !== input.requestId) throw new Error('The speech request does not match the loaded draft.')
   if (workspace.request.status === 'completed' || workspace.request.status === 'cancelled') throw new Error('This request is closed. The draft is read-only.')
   if (!input.id || typeof input.text !== 'string' || !input.text.trim() || input.text.includes('\0')) throw new Error('Speech contains no valid text.')
-  if (!resolveWorkbenchPolicy(workspace.workbench)) throw new Error('This workbench is not supported. The draft is read-only.')
+  if (!resolveWorkbenchDefinition(workspace.workbench)) throw new Error('This workbench is not supported. The draft is read-only.')
   const destination = input.destination
   if (destination.kind === 'unknown') throw new Error('This speech destination is not supported. Your words have been preserved.')
   if (destination.kind === 'document') return updateFeedbackDraftDocument(
@@ -101,11 +108,13 @@ export function applySpeechWriteback(workspace: SpeechWriteWorkspace, input: Spe
     id: input.id, requestId: input.requestId, text: input.text,
     mergedIds: [...new Set(input.mergedIds ?? [])].filter((id) => id !== input.id),
   }
-  const receipt: WriteReceipt = destination.kind === 'question_answer'
-    ? { ...receiptBase, kind: 'question_answer', questionId: destination.questionId }
-    : destination.kind === 'web_review_annotation'
-      ? { ...receiptBase, kind: 'web_review_annotation', annotationId: destination.annotationId }
-      : { ...receiptBase, annotationId: destination.annotationId, field: destination.field, sourceVersion: destination.sourceVersion }
+  const receipt: WriteReceipt = destination.kind === 'workbench_field'
+    ? { ...receiptBase, kind: 'workbench_field', destination: structuredClone(destination) }
+    : destination.kind === 'question_answer'
+      ? { ...receiptBase, kind: 'question_answer', questionId: destination.questionId }
+      : destination.kind === 'web_review_annotation'
+        ? { ...receiptBase, kind: 'web_review_annotation', annotationId: destination.annotationId }
+        : { ...receiptBase, annotationId: destination.annotationId, field: destination.field, sourceVersion: destination.sourceVersion }
   if (receiptAlreadyApplied(receipts, receipt)) {
     return { documentJson: workspace.draft.document_json!, bodyMarkdown: workspace.draft.body_markdown }
   }

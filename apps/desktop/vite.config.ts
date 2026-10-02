@@ -18,6 +18,9 @@ function thirdPartyNotices(): Plugin {
         'licenses/font-jetbrains-mono-OFL-1.1.txt',
         'licenses/font-fira-code-OFL-1.1.txt',
         'licenses/font-geist-mono-OFL-1.1.txt',
+        'licenses/xterm-MIT.txt',
+        'licenses/xterm-addon-fit-MIT.txt',
+        'licenses/portable-pty-MIT.txt',
         'docs/CODEG_PORTS.md',
       ]) {
         this.emitFile({

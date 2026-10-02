@@ -17,8 +17,10 @@
 | --- | --- | --- | --- |
 | Requests、Host Sessions、列表与详情投影 | **Automated** | **Automated** | Tauri 与 HTTP Application Transport conformance、Web ready/refetch 与 session auth 已覆盖。 |
 | TipTap Feedback Draft、autosave 与 revision/CAS | **Automated**；发布前仍做 **Manual** 编辑回归 | **Automated**；发布前仍做 **Manual** 多标签页/重连回归 | 两端使用同一 `document_json` 真源与 application mutation；浏览器不是第二份 Draft。 |
-| 自由反馈、逐项问答、文稿审阅、网页评审与共享输入字段 | **Automated**；设备输入仍做 **Manual** 回归 | **Automated**；真实浏览器输入仍做 **Manual** 回归 | 正文与类型交互状态同 revision 保存；字段语音、附件跟随输入目标，不能把桌面设备能力外推到 Web。 |
-| 网页 DOM 选择、元素批注与独立评审页签 | **Automated**；原生 WebView 嵌入仍做 **Manual** 回归 | **Automated**；Chrome/Safari/真实触屏仍做 **Manual** 回归 | 桌面浏览器已验证跨 origin bridge、SPA、滚动锚点及固定视口。默认普通工作台，网页工具栏“选择元素”旁的全屏评审按钮打开独立页签，会话导航始终可用；页签往返保留草稿和网页状态。底部固定批注只显示编号标题和意见框，保留输入工具、删除与收起，捕获上下文仍存入数据并可在终态历史展示；设备按钮只有图标与 tooltip，手机画布固定居中。这些布局交互需按当前版本回归。页面需允许 iframe；跨源页面需安装 bridge，禁止嵌入或未连接时仅预览、截图和整体意见。详见[网页评审](workbench/web-review.md)。 |
+| 六种正式工作台与共享输入字段 | **Automated**；设备输入仍做 **Manual** 回归 | **Automated**；真实浏览器输入仍做 **Manual** 回归 | 当前目录见[协议](PROTOCOL.md#工作台发现与类型合同)。正文与类型交互状态同 revision 保存；字段语音、附件跟随输入目标，不能把桌面设备能力外推到 Web。 |
+| 网页 DOM 选择、元素批注与独立评审页签 | **Automated**；原生 WebView 嵌入仍做 **Manual** 回归 | **Automated**；Chrome/Safari/真实触屏仍做 **Manual** 回归 | 桌面浏览器已验证跨 origin bridge、SPA、滚动锚点及固定视口。默认普通工作台，网页工具栏“选择元素”旁的全屏评审按钮打开独立页签，会话导航始终可用；页签往返保留草稿和网页状态。底部固定批注只显示编号标题和意见框，保留输入工具、删除与收起，捕获上下文仍存入数据并可在终态历史展示；设备按钮只有图标与 tooltip，手机画布固定居中。这些布局交互需按当前版本回归。页面需允许 iframe，跨源页面需安装 bridge；未连接时仅预览，禁止嵌入时需打开原页面，再用整体意见和可用附件工具反馈。详见[网页评审](workbench/web-review.md)。 |
+| 终端 CLI 试用 | **Automated**；原生输入仍做 **Manual** 回归 | **Automated**；真实浏览器输入仍做 **Manual** 回归 | 两端调用同一 PTY 合同，进程位于 Backend Runtime 主机；从体验 Markdown 复制命令，主动开始或重开，最多保留 16 轮，选中输出引用到正文，提交前停止并排空最终输出。Windows ConPTY 有真实回归；Unix 独立后台进程组完整回收仍待补齐，macOS/Linux 真实 PTY 与物理手机仍待验。具体证据见[终端试用](workbench/terminal.md)。 |
+| 条目拖动排序、名称编辑与删除恢复 | **Automated**；真实输入做 **Manual** 回归 | **Automated**；触屏拖动做 **Manual** 回归 | 保存顺序、名称修改与删除状态，提交返回最终条目及删除 ID；未完成名称可存草稿，不能提交。普通视图无全屏入口，键盘和指针操作分别体验。见[排序材料](../playground/workbenches/materials/sort.md)。 |
 | 新建会话的项目目录浏览 | **Automated** | **Automated** | 同一 application 合同列出 Backend Runtime 机器上的目录；浏览器上传文件与选择 Agent 工作目录是不同功能。 |
 | 文件上传与图片粘贴 | **Automated**；原生文件选择做 **Manual** 回归 | **Automated**；浏览器文件 input 与 DOM image paste 做 **Manual** 浏览器回归 | 候选先经过 Capture Plugin/Attachment Candidate seam，再由 application mutation 持久化；浏览器文件不是服务器路径。 |
 | Submit 与 published feedback 下载 | **Automated** | **Automated** | 两种 Transport 共享 terminal mutation、不可变 package 与安全下载投影。 |
@@ -97,7 +99,7 @@
 1. macOS 与 Windows Desktop：TipTap 编辑、附件、截图/overlay/pin、全局快捷键、tray、updater 与系统权限。
 2. Chrome 与 Safari：Web bootstrap、重连、TipTap autosave/CAS、上传、图片粘贴、submit 与下载。
 3. 真实手机：抽屉互斥与关闭、请求切换、软键盘、触控、附件预览、真实旋转、安全区与焦点归还。
-   当前用户没有手机与 Windows 验收环境，两类必验项都保留，不能用 macOS 或视口模拟补齐。
+   Windows 已有工作台与 ConPTY 的专项记录，仍需本次安装包的原生设备回归；真实手机的未验项保留，不能用桌面浏览器视口模拟补齐。
 4. Browser local ASR：按下面的专门矩阵记录实际浏览器、硬件和测量数据。
 
 上述人工项未记录通过前，只能说相应代码路径和自动化门禁存在，不能声称目标浏览器或设备已兼容。

@@ -24,6 +24,8 @@ Codeg 的 Agent 管理、Chat 与外观配色模块按固定 commit `3ebdfed1d7c
 | xcap 0.9.7 | 鼠标所在显示器的本地区域截图 | Apache-2.0 | <https://github.com/nashaofu/xcap> |
 | tauri-plugin-global-shortcut 2.3.2 | Windows 全局截图快捷键 | Apache-2.0 OR MIT | <https://github.com/tauri-apps/plugins-workspace> |
 | image 0.25 | 内存截图裁剪和 PNG 编码 | Apache-2.0 OR MIT | <https://github.com/image-rs/image> |
+| xterm.js 6.0.0 / addon-fit 0.11.0 | 终端画面、选区及尺寸适配 | MIT（随附 `licenses/xterm*-MIT.txt`） | <https://github.com/xtermjs/xterm.js> |
+| portable-pty 0.9.0 | 后端真实交互式终端 | MIT（随附 `licenses/portable-pty-MIT.txt`） | <https://github.com/wezterm/wezterm/tree/main/pty> |
 
 模型不提交到 RambleDesk Git 仓库。开发机按 `crates/rambledesk-speech/models/`
 中的模型清单获取并校验。

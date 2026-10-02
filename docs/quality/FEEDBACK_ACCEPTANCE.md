@@ -8,7 +8,7 @@
 `ApplicationCommandFacade`、`WebSessionManager` 和 Web Access server。
 它沿用 [Web Access server 测试](../../crates/rambledesk-local-server/tests/web_access_server.rs)
 与 [managed preview](../../crates/rambledesk-local-server/examples/managed_preview.rs) 的装配方式。
-这个更小的入口只创建外部反馈请求，不启动 ACP、Local Integration listener、Tauri、模型或设备。
+这个更小的入口只创建外部反馈请求，不启动 ACP、Local Integration listener、Tauri、模型或客户端设备采集。可选终端场景在用户主动开始后使用后端真实 PTY。
 
 每次运行创建全新的系统临时目录和 SQLite，反馈包与附件也只写在该目录内；端口由 IPv4 loopback
 listener 随机分配。无选项可以接入日常数据库。凭证随机生成，只写临时文件，不输出到日志。
@@ -31,7 +31,7 @@ python3 scripts/feedback-acceptance.py start --keep
 第一次构建可能下载锁定依赖；不要把下载缺失或构建锁等待误报成产品失败。
 `--no-build` 可复用已构建的 example，manifest 会明确记录该限制。
 
-启动输出包含 `url`、`manifestFile`、`database`、`tokenFile`、`stopFile`、PID 和四条 seed 的 id。
+默认启动输出包含 `url`、`manifestFile`、`database`、`tokenFile`、`stopFile`、PID 和四条 seed 的 id。
 打开 URL，将 `tokenFile` 中的测试凭证填入现有 Web Access 认证界面。不要把凭证放进截图或验收记录。
 每条 seed 使用独立外部 Host Session；要选择对应的 Session，才能看到它的请求。
 
@@ -45,6 +45,8 @@ python3 scripts/feedback-acceptance.py start --keep
 `document_json` 与 Markdown 同时通过真实保存 API seed，初始 revision 与内容哈希写入 manifest。
 请求/附件 UUID 每次不同；普通与长文档的文字和段数固定。若需要图片粘贴、原生文件选择或截图，
 在浏览器/原生验收中实际操作，不能用这里的文本附件替代。
+
+设置 `RAMBLEDESK_ACCEPTANCE_TERMINAL=1` 再启动，可额外创建 `terminal` 请求，起始目录指向仓库的 playground，CLI 操作按[终端材料](../../playground/workbenches/materials/06-terminal.md)执行。此请求初始没有转录，需要用户主动开始、输入并提交；通用 HTTP `smoke` 不证明实际 CLI、交互键或 PTY 资源回收通过。终端设备和平台结论单独记录，默认四条正文夹具仍用于下述自动验收。
 
 停止时复制本次输出的 `manifestFile`，不要沿用上次运行的路径：
 

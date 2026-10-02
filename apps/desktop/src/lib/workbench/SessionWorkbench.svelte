@@ -1,10 +1,10 @@
 <!--
-  Ramble session view: a registered workbench (here: Ramble) inside the common
+  Session view: a registered workbench inside the common
   workbench container. This file only wires the App's props to those two pieces;
   the layout, the feedback column and the submission flow live in the container.
 -->
 <script lang="ts">
-  import type { Snippet } from 'svelte'
+  import { onMount, type Snippet } from 'svelte'
   import { writable } from 'svelte/store'
   import type { JSONContent } from '@tiptap/core'
   import type { ApplicationTransport } from '$lib/application/applicationTransport'
@@ -38,8 +38,10 @@
   import type { WorkbenchState } from '../generated/feedback'
   import { readWorkbenchState, withWorkbenchState } from '../workbenchState'
   import { applyFeedbackDraftSnapshot, snapshotFeedbackDraftDocument } from '../feedbackDraftDocument'
-  import { workbenchIsReadOnly } from '../workbenchPolicy'
   import WorkbenchContainer from './WorkbenchContainer.svelte'
+  import { resolveWorkbenchDefinition } from './definitions/registry'
+  import type { WorkbenchController } from './definitions/contracts'
+  import { createWorkbenchLifecycle } from './workbenchLifecycle'
 
   export let loadingWorkspace = false
   export let readOnly = false
@@ -59,6 +61,8 @@
   export let reviewMode = false
   export let onOpenReview: (() => void) | undefined = undefined
   export let onReturnToWorkbench: (() => void) | undefined = undefined
+  export let controller: WorkbenchController | undefined = undefined
+  export let onWorkbenchBusyChange: (requestId: string, busy: boolean) => void = () => {}
   export let workspace: FeedbackWorkspaceView | null = null
   export let feedbackResult: FeedbackResultView | null = null
   export let draftBody = ''
@@ -106,7 +110,7 @@
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
 
-  $: unsupported = workbenchIsReadOnly(workspace?.workbench)
+  $: unsupported = definition === null
   $: feedbackReadOnly = readOnly || unsupported
   $: interactionLocked = feedbackReadOnly || cooking || cookedDraftReady || submitting || cancelling || approving
 
@@ -131,6 +135,11 @@
   })
 
   let container: WorkbenchContainer
+  const localLifecycle = createWorkbenchLifecycle({ transport, getWorkspace: () => workspace, getState: () => interactionState,
+    updateState: interactionChanged, isEditable: () => !interactionLocked && !!workspace && !['completed','cancelled'].includes(workspace.request.status), onBusy: (requestId, busy) => onWorkbenchBusyChange(requestId, busy) })
+  $: localController = controller ? (localLifecycle.forWorkspace(null), undefined) : localLifecycle.forWorkspace(workspace)
+  $: definition = resolveWorkbenchDefinition(workspace?.workbench)
+  onMount(() => () => localLifecycle.dispose())
   let interactionState: WorkbenchState | null = null
   let currentSnapshot: FeedbackDraftSnapshot = { documentJson: '{"schemaVersion":2,"doc":{"type":"doc","content":[]}}', bodyMarkdown: '' }
   $: loadDraft(workspace?.request.request_id, draftDocumentJson ?? workspace?.draft.document_json, editorEpoch)
@@ -153,6 +162,12 @@
 
   export function applyDraftOperation(operation: DraftOperation): boolean {
     return container?.applyDraftOperation(operation) ?? false
+  }
+
+  function quoteOutput(text: string) {
+    if (interactionLocked || !text.trim()) return
+    container?.applyDraftOperation({ kind: 'appendClipboardText', text,
+      label: workspace?.request.title ?? 'Terminal output', action: null })
   }
 
   export function pendingSpeechSegments(): SpeechCleanupSegment[] {
@@ -180,7 +195,7 @@
   <WorkbenchContainer
     bind:this={container}
     {reviewMode}
-    interactivePreview={workspace?.workbench?.type === 'web_review'}
+    interactivePreview={definition?.layout.interactivePreview ?? false}
     {onReturnToWorkbench}
     {workspace}
     {transport}
@@ -233,7 +248,9 @@
       {#if workspace}
         <RegisteredWorkbench
           {workspace}
-          onOpenReview={!reviewMode && !unsupported && workspace.workbench?.type === 'web_review' ? onOpenReview : undefined}
+          onOpenReview={!reviewMode && !unsupported && definition?.layout.expanded ? onOpenReview : undefined}
+          onQuote={quoteOutput}
+          controller={controller ?? localController}
           {transport}
           {capabilities}
           {resolveHostProfile}

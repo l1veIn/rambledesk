@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { canSubmitWorkbench, readWorkbenchState } from './lib/workbenchState'
-  import { workbenchIsReadOnly } from './lib/workbenchPolicy'
+  import { canSubmitWorkbench, readWorkbenchState, withWorkbenchState } from './lib/workbenchState'
+  import { createWorkbenchLifecycle } from './lib/workbench/workbenchLifecycle'
+  import { reconcileFieldSpeechSegments } from './lib/speech/fieldSpeechSegments'
+  import { workbenchIsReadOnly } from './lib/workbench/definitions/registry'
   import { onMount, tick } from 'svelte'
   import { createRequestInputComposition } from './lib/workbench/requestInputComposition'
   import RequestSpeechTools from './lib/speech/RequestSpeechTools.svelte'
@@ -164,6 +166,13 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   let renderedSessionResolution: SessionViewResolution | null = null
   let pageError = ''
   let sessionWorkbench: FeedbackEditorHandle | undefined
+  let preparingWorkbenchRequestId: string | null = null
+  let workbenchBusyRequestId: string | null = null
+  function workbenchBusyChanged(requestId: string, busy: boolean) {
+    if (busy) workbenchBusyRequestId = requestId
+    else if (workbenchBusyRequestId === requestId) workbenchBusyRequestId = null
+  }
+  const workbenchOperationPending = () => preparingWorkbenchRequestId !== null || workbenchBusyRequestId !== null
   let rambleController: RambleSessionControllerHandle
   const inputTargets = createRequestInputTargets()
   let revealTarget: SpeechTarget | null = null
@@ -223,6 +232,15 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   })
   const updateDraft = draftController.updateDraft
   const saveDraftNow = draftController.saveDraftNow
+  const workbenchLifecycle = createWorkbenchLifecycle({
+    transport: applicationTransport, getWorkspace: () => $workspaceSession.workspace,
+    getState: () => readWorkbenchState(draftSession.snapshot().documentJson),
+    updateState: (state) => { const current = draftSession.snapshot(); updateDraft(reconcileFieldSpeechSegments(current, withWorkbenchState(current, state))) },
+    isEditable: () => !workspaceSession.isTerminal() && !feedbackReadOnly && !$workspaceSession.interactionLocked,
+    onBusy: workbenchBusyChanged,
+  })
+  $: workbenchController = workbenchLifecycle.forWorkspace($workspaceSession.workspace)
+  onMount(() => () => workbenchLifecycle.dispose())
   const inputComposition = createRequestInputComposition({
     getWorkspace: () => $workspaceSession.workspace, draft: draftSession, draftController,
     getConfig: () => tidyConfig, isLocked: () => feedbackReadOnly || workspaceTransitionLocked,
@@ -245,7 +263,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     getCurrentRequest: () => currentRequest,
     getEditor: () => sessionWorkbench,
     isWorkbenchMounted: () => $startup.mounted,
-    isTransitionLocked: () => workspaceTransitionLocked,
+    isTransitionLocked: () => workspaceTransitionLocked || workbenchOperationPending(),
     isInputLocked: () => feedbackReadOnly || interactionLocked || currentRequestCooking || cookedDraftReady,
     getDraftMessage: () => $draftSession.message,
     getDraftSnapshot: draftSession.snapshot,
@@ -371,7 +389,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     setPageError: (message) => {
       pageError = message
     },
-    isTransitionLocked: () => workspaceTransitionLocked,
+    isTransitionLocked: () => workspaceTransitionLocked || workbenchOperationPending(),
     exitRamble,
     rambleCanExit: () => rambleCanExit,
     openArchivedSessions: (initial) => openArchivedSessions(initial),
@@ -394,7 +412,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     setPageError: (message) => { pageError = message },
     releaseEditor: () => { sessionWorkbench = undefined },
     refreshNotificationPermission: () => notificationPermission.refresh(),
-    isTransitionLocked: () => workspaceTransitionLocked,
+    isTransitionLocked: () => workspaceTransitionLocked || workbenchOperationPending(),
     enqueueDocumentTask,
     onboardingOpen: () => $onboarding.open,
     resumePromptOpen: () => $resumePrompts.prompt !== null,
@@ -523,6 +541,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     currentRequest.status !== 'cancelled' &&
     canSubmitWorkbench($workspaceSession.workspace?.workbench, readWorkbenchState($draftSession.documentJson), $draftSession.body) &&
     !currentRequestCooking &&
+    preparingWorkbenchRequestId === null &&
+    workbenchBusyRequestId === null &&
     !$workspaceSession.interactionLocked
   $: canCancel =
     !managedFeedbackReadOnly &&
@@ -530,10 +550,14 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     currentRequest.status !== 'completed' &&
     currentRequest.status !== 'cancelled' &&
     !currentRequestCooking &&
+    preparingWorkbenchRequestId === null &&
+    workbenchBusyRequestId === null &&
     !$workspaceSession.interactionLocked
   $: interactionLocked = $workspaceSession.interactionLocked
   $: workspaceTransitionLocked =
     interactionLocked ||
+    preparingWorkbenchRequestId !== null ||
+    workbenchBusyRequestId !== null ||
     $attachmentSession.busy ||
     $attachmentSession.captureBusy ||
     currentRequestCooking ||
@@ -744,7 +768,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     isCookingEnabled: () => $cookingEnabled,
     isCooking: () => currentRequestCooking,
     prepareFeedback: prepareRequestInput,
-    isInputBusy: () => $attachmentSession.mediaBusy || rambleController.inputBusy(),
+    isInputBusy: () => $attachmentSession.mediaBusy || rambleController.inputBusy() || workbenchBusyRequestId !== null,
     saveDraftNow,
     setPageError: (message) => {
       pageError = message
@@ -754,6 +778,19 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   })
   const cookPreviewOnly = cookingController.cookPreviewOnly
   const restoreOriginalAfterCook = cookingController.restoreOriginal
+
+  async function prepareWorkbench(requestId: string): Promise<void> {
+    if ($workspaceShell.pendingViewKey !== null || $workspaceSession.loadingWorkspace || workbenchOperationPending()) throw new Error(tr('Wait for the current operation to finish.'))
+    preparingWorkbenchRequestId = requestId
+    try {
+      // Resource preparation is request-bound and independent of the currently mounted view.
+      await tick()
+      await workbenchLifecycle.prepareSubmission(requestId)
+      await tick()
+    } finally {
+      if (preparingWorkbenchRequestId === requestId) preparingWorkbenchRequestId = null
+    }
+  }
 
   const publisherController = createPublisherController({
     transport: applicationTransport,
@@ -767,7 +804,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     },
     isReadOnly: () => feedbackReadOnly,
     prepareFeedback: prepareRequestInput,
-    isInputBusy: () => $attachmentSession.mediaBusy || rambleController.inputBusy(),
+    prepareWorkbench,
+    isInputBusy: () => $attachmentSession.mediaBusy || rambleController.inputBusy() || workbenchBusyRequestId !== null,
     saveDraftNow,
     getCookingEnabled: () => $cookingEnabled,
     cookSubmission: cookingController.cookSubmission,
@@ -789,10 +827,11 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     publishedFeedbackAction,
     tr,
     messageFrom,
-    canCancel: () => canCancel,
+    canCancel: () => canCancel && !workbenchOperationPending(),
     canApprove: () => !feedbackReadOnly && !currentRequestCooking && !cookedDraftReady,
     prepareFeedback: prepareRequestInput,
-    isInputBusy: () => $attachmentSession.mediaBusy || rambleController.inputBusy(),
+    prepareWorkbench,
+    isInputBusy: () => $attachmentSession.mediaBusy || rambleController.inputBusy() || workbenchBusyRequestId !== null,
     saveDraftNow,
     refreshNavigation: async () => {
       await navigation.refreshNavigation(true)
@@ -1099,6 +1138,8 @@ import type { SettingsSection } from './lib/domain/settingsSection'
         transport={applicationTransport}
         {capabilities}
         bind:this={sessionWorkbench}
+        controller={workbenchController}
+        onWorkbenchBusyChange={workbenchBusyChanged}
         view={renderedReviewView ?? renderedSessionView}
         reviewMode={renderedReviewView !== null}
         onOpenReview={currentRequest ? () => void workspaceNavigation.openView(workbenchReviewViewDescriptor(currentRequest!.request_id)) : undefined}

@@ -4,7 +4,7 @@
 
 ## 页面接入
 
-页面必须允许 RambleDesk 嵌入。`X-Frame-Options` 或 `Content-Security-Policy: frame-ancestors` 禁止嵌入时，客户端无法绕过浏览器限制。HTTPS Web Access 也遵循浏览器的混合内容限制。
+页面必须允许 RambleDesk 嵌入。`X-Frame-Options` 或 `Content-Security-Policy: frame-ancestors` 禁止嵌入时，客户端无法绕过浏览器限制；页面还受浏览器的混合内容规则约束。当前 Web Access 访问范围见[支持矩阵](../WEB_ACCESS_SUPPORT_MATRIX.md)。
 
 跨源 iframe 不能由客户端直接读取 DOM。Agent 在待评审开发页中加载随应用分发的 `rambledesk-web-review.js`，页面和工作台通过限定来源、窗口和会话的 `postMessage` 协作。脚本负责悬停高亮、阻止选择模式中的原点击、生成元素信息、显示编号及滚动定位；浏览模式保留页面自己的交互。
 

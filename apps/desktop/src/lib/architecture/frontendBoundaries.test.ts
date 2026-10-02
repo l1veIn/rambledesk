@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, normalize, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import ts from 'typescript'
 
 /**
  * Frontend dependency direction.
@@ -85,6 +86,8 @@ const ALLOWED_EDGES: readonly string[] = [
   'lib/preview -> lib/application',
   'lib/preview -> lib/capabilities',
   'lib/preview -> lib/domain',
+  // Fixture transport discovers pure definition metadata; lazy views never load here.
+  'lib/preview -> lib/workbench',
   // rambelle
   'lib/rambelle -> lib/(root)',
   // screen capture
@@ -108,6 +111,9 @@ const ALLOWED_EDGES: readonly string[] = [
   'lib/speech -> lib/(root)',
   'lib/speech -> lib/domain',
   'lib/speech -> lib/settings',
+  // Writeback/tidy validate editability through the headless registry only.
+  // They must not import business views or workbench session controllers.
+  'lib/speech -> lib/workbench',
   // updates
   'lib/updates -> lib/(root)',
   'lib/updates -> lib/domain',
@@ -200,6 +206,30 @@ function collectEdges(): Set<string> {
   return edges
 }
 
+function runtimeImports(file: string): string[] {
+  const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true)
+  const targets: string[] = []
+  function visit(node: ts.Node) {
+    let specifier: string | undefined
+    if (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly && ts.isStringLiteral(node.moduleSpecifier)) {
+      const clause = node.importClause
+      const bindings = clause?.namedBindings
+      const typesOnly = bindings && ts.isNamedImports(bindings) && !clause?.name && bindings.elements.every((element) => element.isTypeOnly)
+      if (!typesOnly) specifier = node.moduleSpecifier.text
+    } else if (ts.isExportDeclaration(node) && !node.isTypeOnly && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      specifier = node.moduleSpecifier.text
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && ts.isStringLiteral(node.arguments[0])) {
+      // Svelte views are lazy callbacks; fixture definitions can load eagerly.
+      if (!node.arguments[0].text.endsWith('.svelte')) specifier = node.arguments[0].text
+    }
+    const target = specifier && resolveImport(specifier, file)
+    if (target) targets.push(target)
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  return targets
+}
+
 describe('frontend dependency direction', () => {
   it('only imports across domains along the frozen edges', () => {
     const allowed = new Set(ALLOWED_EDGES)
@@ -220,6 +250,33 @@ describe('frontend dependency direction', () => {
 
   it('keeps the workspace view layer free of workbench imports', () => {
     const violations = [...collectEdges()].filter((edge) => edge === 'lib/workspace -> lib/workbench')
+    expect(violations).toEqual([])
+  })
+
+  it('limits speech workbench imports to definition lookup', () => {
+    const registry = join(sourceRoot, 'lib/workbench/definitions/registry.ts')
+    const violations = sourceFiles(join(sourceRoot, 'lib/speech')).flatMap((file) =>
+      runtimeImports(file).filter((target) => domainOf(target) === 'lib/workbench' && target !== registry)
+        .map((target) => `${relative(sourceRoot, file)} -> ${relative(sourceRoot, target)}`))
+    expect(violations).toEqual([])
+  })
+
+  it('keeps registered definitions headless without a reverse speech dependency or import cycle', () => {
+    const definitions = join(sourceRoot, 'lib/workbench/definitions')
+    const visited = new Set<string>()
+    const active = new Set<string>()
+    const violations: string[] = []
+    function visit(file: string) {
+      const label = relative(sourceRoot, file)
+      if (active.has(file)) { violations.push(`Import cycle: ${label}`); return }
+      if (visited.has(file)) return
+      visited.add(file)
+      if (file.endsWith('.svelte') || domainOf(file) === 'lib/speech') { violations.push(`UI or speech dependency: ${label}`); return }
+      active.add(file)
+      runtimeImports(file).forEach(visit)
+      active.delete(file)
+    }
+    sourceFiles(definitions).filter((file) => file.endsWith(`${sep}definition.ts`) || file === join(definitions, 'registry.ts')).forEach(visit)
     expect(violations).toEqual([])
   })
 })

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 mod agents;
 mod managed;
+mod terminal;
 pub use agents::AgentManagementError;
 pub use managed::{ManagedCommandError, ManagedCommandErrorCode};
 

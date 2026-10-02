@@ -24,7 +24,8 @@ import type {
   SaveDraftInput,
 } from '../feedback'
 import { previewFixtures, previewWorkspaceFor } from './previewFixtures'
-import { webReviewPreviewSpec } from './webReviewPreviewFixture'
+import { registeredWorkbenchExamples, previewExampleAttachments } from '../workbench/definitions/examples'
+import { TerminalPreviewRuntime } from './terminalPreviewFixture'
 
 export type PreviewApplicationOptions = { workspace?: string | null; origin?: string }
 
@@ -43,6 +44,8 @@ export class PreviewApplicationTransport implements ApplicationTransport {
   readonly #attachments = new Map<string, AttachmentView[]>()
   readonly #submitted = new Set<string>()
   readonly #workspaceOverrides = new Map<string, FeedbackWorkspaceView>()
+  readonly #terminal = new TerminalPreviewRuntime()
+  readonly #requestMaterial = new Map<string, string>()
 
   constructor(private readonly capabilityManifest: CapabilityManifest, options: PreviewApplicationOptions = {}) {
     for (const request of previewFixtures.requests) this.#requests.set(request.request_id, { ...request })
@@ -52,15 +55,20 @@ export class PreviewApplicationTransport implements ApplicationTransport {
     }
     const scenario = options.workspace ?? (typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('workspace') : null)
-    if (scenario === 'web_review') {
+    const example = registeredWorkbenchExamples.find((item) => item.spec.type === scenario)
+    if (example) {
       const base = structuredClone(previewFixtures.workspace)
-      const spec = webReviewPreviewSpec(options.origin)
-      const request = { ...base.request, title: '网页评审 · Atelier 首页',
-        what_happened: '请体验这个页面，在元素旁留下意见，并补充整体反馈。',
+      const request = { ...base.request, title: example.title,
+        what_happened: example.markdown,
         status: 'in_progress' as const, resolution: null, allow_finish: false, final_summary: null }
+      const requestAttachments = previewExampleAttachments(example).map(({ markdown, ...attachment }, position) => {
+        this.#requestMaterial.set(attachment.attachment_id, markdown)
+        return { ...attachment, media_type: 'text/markdown', byte_size: new TextEncoder().encode(markdown).byteLength,
+          sha256: `preview-${attachment.attachment_id}`, position }
+      })
       this.#requests.set(request.request_id, request)
-      this.#workspaceOverrides.set(request.request_id, { ...base, request, workbench: spec,
-        actions: [], context_refs: [], request_attachments: [], attachments: [], feedback: null,
+      this.#workspaceOverrides.set(request.request_id, { ...base, request, workbench: structuredClone(example.createSpec?.(options) ?? example.spec),
+        actions: structuredClone([...(example.actions ?? [])]), context_refs: [], request_attachments: requestAttachments, attachments: [], feedback: null,
         draft: { document_json: null, body_markdown: '', saved_revision: 0, updated_at: null } })
     }
   }
@@ -95,6 +103,18 @@ export class PreviewApplicationTransport implements ApplicationTransport {
 
   #dispatch(name: ApplicationCommandName, input: unknown): unknown {
     switch (name) {
+      case 'openTerminalSession':
+      case 'readTerminalSession':
+      case 'writeTerminalSession':
+      case 'resizeTerminalSession':
+      case 'stopTerminalSession':
+        return this.#terminal.call(name, input as Parameters<TerminalPreviewRuntime['call']>[1])
+      case 'readRequestAttachment': {
+        const { request_id, attachment_id } = input as { request_id: string; attachment_id: string }
+        if (!this.#workspaceFor(request_id).request_attachments.some((item) => item.attachment_id === attachment_id)
+          || !this.#requestMaterial.has(attachment_id)) throw new Error('预览附件不存在。')
+        return new TextEncoder().encode(this.#requestMaterial.get(attachment_id)!).buffer
+      }
       case 'listFeedbackInbox':
         return [...this.#requests.values()].filter(
           (request) => request.status === 'waiting' || request.status === 'in_progress',

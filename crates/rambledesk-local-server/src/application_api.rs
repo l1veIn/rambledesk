@@ -3,6 +3,7 @@ use std::sync::Arc;
 mod agents;
 mod directories;
 mod managed;
+mod terminal;
 
 use axum::{
     Json, Router,
@@ -47,6 +48,10 @@ pub const RUNTIME_GENERATION_HEADER: &str = "x-rambledesk-runtime-generation";
 pub const REVISION_HEADER: &str = "x-rambledesk-revision";
 
 const MUTATION_OPERATIONS: &[&str] = &[
+    "openTerminalSession",
+    "writeTerminalSession",
+    "resizeTerminalSession",
+    "stopTerminalSession",
     "inspectAgentInstallation",
     "installAgent",
     "cancelAgentInstall",
@@ -138,6 +143,7 @@ pub fn application_router(
         .merge(managed::routes())
         .merge(directories::routes())
         .merge(agents::routes())
+        .merge(terminal::routes())
         .route("/application/listFeedbackInbox", post(list_feedback_inbox))
         .route("/application/listHostSessions", post(list_host_sessions))
         .route(

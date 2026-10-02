@@ -7,7 +7,9 @@ export function speechTargetLabel(target: SpeechTarget, tr: Translate): string {
   const destination = target.destination
   const detail = destination.kind === 'document'
     ? destination.action?.title ?? tr('Feedback document')
-    : destination.kind === 'review_annotation'
+    : destination.kind === 'workbench_field'
+      ? destination.label
+      : destination.kind === 'review_annotation'
       ? `${destination.paragraphLabel} · ${tr(destination.field === 'body' ? 'Comment' : 'Suggested wording')}`
       : destination.kind === 'question_answer'
         ? `${destination.questionLabel} · ${tr('Your answer')}`

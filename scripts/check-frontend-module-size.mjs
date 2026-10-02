@@ -12,7 +12,7 @@ const EXTENSIONS = new Set(['.svelte', '.ts'])
  * the file fits under `MAX_LINES`.
  */
 const EXEMPTIONS = new Map([
-  ['apps/desktop/src/App.svelte', 1264],
+  ['apps/desktop/src/App.svelte', 1245],
 ])
 
 /** Data files whose length is content, not logic. */

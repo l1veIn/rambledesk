@@ -7,6 +7,9 @@ repository.workspace = true
 publish = false
 description = "RambleDesk persistence and Feedback Package publication"
 
+[features]
+workbench-fixtures = ["rambledesk-core/workbench-fixtures"]
+
 [dependencies]
 async-trait.workspace = true
 dirs.workspace = true

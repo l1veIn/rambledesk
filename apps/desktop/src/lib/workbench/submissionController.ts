@@ -5,7 +5,7 @@ import type { FeedbackPreparation } from '../speech/rambleSessionControllerHandl
 import type { PublishedFeedbackAction } from '../publishedFeedbackAction'
 import type { DraftSession } from './draftSession'
 import type { WorkspaceSession } from './workspaceSession'
-import { workbenchIsReadOnly, workbenchSupportsApproval } from '../workbenchPolicy'
+import { workbenchIsReadOnly, workbenchSupportsApproval } from './definitions/registry'
 
 /**
  * Terminal mutations for the open request: approve, cancel and open the package.
@@ -23,6 +23,7 @@ export type SubmissionControllerContext = {
   canCancel: () => boolean
   canApprove?: () => boolean
   prepareFeedback: (requestId: string) => Promise<FeedbackPreparation>
+  prepareWorkbench?: (requestId: string) => Promise<void>
   isInputBusy?: () => boolean
   saveDraftNow: () => Promise<boolean>
   confirmApproval?: (message: string) => boolean
@@ -79,6 +80,8 @@ export function createSubmissionController(context: SubmissionControllerContext)
           context.setPageError(context.tr('Input is still being received. Finish the current input and try again.'))
           return
         }
+        await context.prepareWorkbench?.(requestId)
+        if (!current(requestId) || get(context.session).interactionLocked) return
       }
       if (intent === 'approve' ? !canApprove() : !context.canCancel()) return
       // Final speech must enter the editable draft before we freeze it for saving.

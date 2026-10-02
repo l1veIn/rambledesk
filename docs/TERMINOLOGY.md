@@ -80,7 +80,8 @@
 - CURRENT：工作台类型通过共享请求、草稿和反馈包合同进入同一生命周期。目录中的 `purpose` / `returns` 描述用途，`interaction` 是分类元数据，不承诺可替换的通用渲染器协议。
 - CURRENT：`document_json` 是版本化 Draft envelope，包含 TipTap `doc` 与可选 `workbenchState`；字段名不意味着整份草稿都是 TipTap 节点。`body_markdown` 仅由 `doc` 派生。
 - CURRENT：类型或版本未知时只读保留请求材料、正文与交互数据；不覆盖保存、不提交、不通过直接批准绕过类型完整性。未知合同不等于请求终态；显式取消仍使用请求级生命周期。
-- CURRENT：发现目录提供 `ramble`、`questions` 和 `document_review`；`single_choice` 仅保留旧合同兼容。问答的 `cancelled` 和旧单选的 `status` 不重新定义 Request Outcome；细节见[反馈协议](PROTOCOL.md)。
+- CURRENT：发现目录提供六种正式类型：`ramble`、`questions`、`document_review`、`web_review`、`terminal`、`sort`。`single_choice` 仅保留旧合同兼容，`rating_review` 仅在开发验收构建中注册，不计入正式数量。问答的 `cancelled` 和旧单选的 `status` 不重新定义 Request Outcome；细节见[反馈协议](PROTOCOL.md)。
+- CURRENT：全屏页签是工作台类型主动开启的客户端布局能力，不是新请求或新草稿。普通模板默认关闭；开启后同一请求的普通与全屏视图复用草稿及运行状态，关闭页签不代表停止后端资源。
 
 ## 会话与 ACP 术语
 

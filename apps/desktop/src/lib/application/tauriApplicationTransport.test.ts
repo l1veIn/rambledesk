@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
 vi.mock('@tauri-apps/api/event', () => ({ listen: mocks.listen }))
 
-import type { ApplicationCommandInput, ApplicationCommandName } from './contracts'
+import type { ApplicationCommandName } from './contracts'
 import { defineApplicationStream } from './applicationTransport'
 import { APPLICATION_EVENTS_STREAM } from './applicationEvents'
 import { createManagedSessionController } from '../agents/managedSessionController'

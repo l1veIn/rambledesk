@@ -14,14 +14,30 @@ export type WorkbenchSpec = { type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | Record<string, unknown>;
+export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | TerminalData | RatingReviewData | SortData | Record<string, unknown>;
+export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, } | { "type": "terminal", sessions: Array<TerminalTrialSession>, } | { "type": "rating_review" } & RatingReviewState | { "type": "sort" } & SortState;
+export type WorkbenchPackage = {
+/**
+ * None for cancellation or an unavailable structured document.
+ */
+result: WorkbenchResult | null, type: string, version: number,
+/**
+ * Get this type's data schema with describe_workbench before creating a request.
+ */
+data: WorkbenchData, };
+export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | TerminalResult | RatingReviewResult | SortResult | Record<string, unknown>;
 export type RambleData = { actions: Array<ActionInput>, };
 export type QuestionsData = { questions: Array<Question>, };
 export type Question = { id: string, prompt: string, label?: string, options: Array<QuestionOption>, allowOther: boolean, };
 export type QuestionOption = { value: string, label: string, description?: string, };
-export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, };
+export type QuestionAnswer = { id: string, value: string, label: string, wasCustom: boolean,
+/**
+ * One-based option index. Absent for custom input.
+ */
+index?: number, };
 export type SingleChoiceData = { prompt: string, options: Array<ChoiceOption>, };
 export type ChoiceOption = { id: string, label: string, };
+export type AnswerStatus = "answered" | "unanswered";
 export type DocumentReviewData = { title: string, source_version: string,
 /**
  * Immutable source paragraphs; at most 120000 Unicode scalar values in total.
@@ -53,22 +69,74 @@ export type WebReviewElement = {
 selector: string, tag_name: string, text: string, rect: WebReviewRect, };
 export type WebReviewAnnotation = { id: string, page_url: string, viewport: WebReviewViewport, element: WebReviewElement, body: string, screenshot_attachment_id?: string, };
 export type WebReviewResult = { source_version: string, annotations: Array<WebReviewAnnotation>, };
-export type WorkbenchPackage = {
+export type TerminalData = { cwd: string, shell?: string,
 /**
- * None for cancellation or an unavailable structured document.
+ * Legacy suggestions retained for saved requests; the terminal does not render them.
  */
-result: WorkbenchResult | null, type: string, version: number,
+commands?: Array<TerminalCommand>, };
+export type TerminalCommand = { id: string, title: string, command: string, description?: string, };
+export type TerminalTrialStatus = "running" | "exited" | "stopped";
+export type TerminalTrialSession = { id: string, cwd: string, shell: string, cols: number, rows: number, status: TerminalTrialStatus,
 /**
- * Get this type's data schema with describe_workbench before creating a request.
+ * Shell session exit code, not the outcome of an individual CLI command.
  */
-data: WorkbenchData, };
-export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | Record<string, unknown>;
-export type QuestionAnswer = { id: string, value: string, label: string, wasCustom: boolean,
+exit_code: number | null,
 /**
- * One-based option index. Absent for custom input.
+ * Bounded original terminal output, including ANSI escape sequences.
  */
-index?: number, };
-export type AnswerStatus = "answered" | "unanswered";
+output: string,
+/**
+ * Latest rendered terminal screen, for CLI menus and other TUI views.
+ */
+screen: string,
+/**
+ * True if any part of this session's evidence exceeded its capture limit.
+ */
+truncated: boolean, };
+export type TerminalResult = { sessions: Array<TerminalTrialSession>, };
+export type RatingReviewData = { title: string, material: string, };
+export type RatingReviewState = { score: number | null, note: string, };
+export type RatingReviewResult = { score: number, note: string, };
+export type SortData = { title: string, items: Array<SortItem>, };
+export type SortItem = { id: string, label: string, };
+export type SortLabelEdit = { id: string,
+/**
+ * May be empty while editing; surviving published labels need visible text.
+ */
+label: string, };
+export type SortState = {
+/**
+ * Surviving input item IDs, exactly once, in the chosen order.
+ */
+order: Array<string>,
+/**
+ * Explicitly deleted input item IDs, disjoint from order.
+ */
+removed_ids: Array<string>,
+/**
+ * Label edits remain in the draft when an item is deleted and restored.
+ */
+edited_items: Array<SortLabelEdit>, };
+export type SortResult = {
+/**
+ * Surviving input item IDs, exactly once, in the chosen order.
+ */
+order: Array<string>,
+/**
+ * Final surviving labels in order. Absent only in legacy sort packages.
+ */
+items?: Array<SortItem>,
+/**
+ * Explicitly deleted input item IDs in the original input order.
+ */
+removed_ids: Array<string>, };
+export type TerminalSessionStatus = "running" | "exited" | "stopped";
+export type OpenTerminalSessionInput = { request_id: string, cols: number, rows: number, };
+export type TerminalSessionInput = { request_id: string, session_id: string, };
+export type ReadTerminalSessionInput = { request_id: string, session_id: string, after_sequence: number | null, };
+export type WriteTerminalSessionInput = { request_id: string, session_id: string, data: string, };
+export type ResizeTerminalSessionInput = { request_id: string, session_id: string, cols: number, rows: number, };
+export type TerminalSessionSnapshot = { session_id: string, request_id: string, cwd: string, shell: string, cols: number, rows: number, status: TerminalSessionStatus, exit_code: number | null, output: string, first_sequence: number, next_sequence: number, truncated: boolean, };
 export type FeedbackTransport = "command" | "http" | "stdio";
 export type ListManagedSessionActivityInput = { session_id: string, before_sequence: number, limit: number | null, turn_limit?: number, };
 export type ManagedSessionActivityPage = { activities: Array<SessionActivity>, has_more: boolean, };

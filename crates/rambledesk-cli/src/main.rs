@@ -156,7 +156,13 @@ async fn smoke(endpoint: &str, token: &AccessToken) -> anyhow::Result<serde_json
         .map(|tool| tool.name.to_string())
         .collect();
 
-    let expected = ["request_feedback", "get_feedback", "cancel_feedback"];
+    let expected = [
+        "request_feedback",
+        "get_feedback",
+        "cancel_feedback",
+        "list_workbenches",
+        "describe_workbench",
+    ];
     let ok = expected
         .iter()
         .all(|name| tool_names.iter().any(|tool| tool == name))

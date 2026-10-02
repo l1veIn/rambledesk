@@ -122,6 +122,47 @@ function harness(options: Partial<PublisherContext> = {}) {
 }
 
 describe('publisherController', () => {
+  it('runs interactive preparation inside the submission flight and saves its final evidence', async () => {
+    const ready = deferred<void>()
+    const prepareWorkbench = vi.fn(async () => {
+      await ready.promise
+      h.edit('Final output and feedback')
+    })
+    const h = harness({ prepareWorkbench })
+    const first = h.publisher.submitFeedback()
+    const second = h.publisher.submitFeedback()
+    expect(second).toBe(first)
+    await vi.waitFor(() => expect(prepareWorkbench).toHaveBeenCalledWith('request-1'))
+    expect(h.saveDraftNow).not.toHaveBeenCalled()
+    ready.resolve()
+    await first
+    expect(prepareWorkbench).toHaveBeenCalledTimes(1)
+    expect(h.transport.callsFor('saveFeedbackDraft')[0].input.body_markdown).toBe('Final output and feedback')
+    expect(h.transport.callsFor('submitFeedback')).toHaveLength(1)
+  })
+  it('aborts when the request changes during workbench preparation without submitting its replacement', async () => {
+    const ready = deferred<void>()
+    const prepareWorkbench = vi.fn(() => ready.promise)
+    const h = harness({ prepareWorkbench })
+    const publishing = h.publisher.submitFeedback()
+    await vi.waitFor(() => expect(prepareWorkbench).toHaveBeenCalledWith('request-1'))
+    h.open('request-2', 'Unrelated feedback')
+    ready.resolve()
+    await publishing
+    expect(h.saveDraftNow).not.toHaveBeenCalled()
+    expect(h.transport.callsFor('submitFeedback')).toHaveLength(0)
+    expect(h.session.requestId()).toBe('request-2')
+  })
+  it('rejects a failed interactive preparation and permits a later explicit retry', async () => {
+    const prepareWorkbench = vi.fn().mockRejectedValueOnce(new Error('Could not stop terminal')).mockResolvedValue(undefined)
+    const h = harness({ prepareWorkbench })
+    await h.publisher.submitFeedback()
+    expect(h.setPageError).toHaveBeenLastCalledWith('Error: Could not stop terminal')
+    expect(h.transport.callsFor('submitFeedback')).toHaveLength(0)
+    expect(h.saveDraftNow).not.toHaveBeenCalled()
+    await h.publisher.submitFeedback()
+    expect(h.transport.callsFor('submitFeedback')).toHaveLength(1)
+  })
   it('does not freeze or publish when new input arrives after preparation resolves', async () => {
     const ready = deferred<{ kind: 'ready' }>()
     let busy = false

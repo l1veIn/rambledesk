@@ -1,0 +1,11 @@
+{
+  "title": "终端试用",
+  "what_happened": "请按体验 Markdown 试用 CLI：复制命令到终端并按回车运行。选中输出引用到右侧正文并留下意见；检查全屏新页签、往返后进程保留、方向键和 Ctrl+C，再停止并重新启动终端继续试用。准备好后提交，各轮记录会随反馈保存。",
+  "workbench": {
+    "type": "terminal", "version": 1,
+    "data": {
+      "cwd": "."
+    }
+  },
+  "attachments": [{ "file_name": "终端试用体验.md", "path": "materials/06-terminal.md" }]
+}

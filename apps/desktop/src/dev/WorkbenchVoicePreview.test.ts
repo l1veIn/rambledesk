@@ -22,6 +22,7 @@ describe('simulated voice workbench preview uses the shared controller and write
   it('tidies all marked speech across inputs and hides the footer action after completion', async () => {
     history.replaceState({}, '', '/workbenches.html?type=questions&voice=1')
     view = mount(WorkbenchPreview, { target: document.body })
+    await vi.waitFor(() => expect(button('Other — write your answer')).toBeDefined())
     button('Other — write your answer').click()
     await vi.waitFor(() => expect(document.querySelector('[data-question-answer="audience"]')).not.toBeNull())
     const answer = document.querySelector<HTMLElement>('[data-question-answer="audience"]')!
@@ -58,6 +59,7 @@ describe('simulated voice workbench preview uses the shared controller and write
   it('pins a custom answer while moving between questions and resumes the next question without advancing', async () => {
     history.replaceState({}, '', '/workbenches.html?type=questions&voice=1')
     view = mount(WorkbenchPreview, { target: document.body })
+    await vi.waitFor(() => expect(button('Other — write your answer')).toBeDefined())
     button('Other — write your answer').click()
     await vi.waitFor(() => expect(document.querySelector('[data-question-answer="audience"]')).not.toBeNull())
     document.querySelector<HTMLButtonElement>('[aria-label="Speak answer"]')!.click()
@@ -89,6 +91,7 @@ describe('simulated voice workbench preview uses the shared controller and write
   it('preserves a fixed choice when an earlier custom-answer segment finishes late', async () => {
     history.replaceState({}, '', '/workbenches.html?type=questions&voice=1')
     view = mount(WorkbenchPreview, { target: document.body })
+    await vi.waitFor(() => expect(button('Other — write your answer')).toBeDefined())
     button('Other — write your answer').click()
     await vi.waitFor(() => expect(document.querySelector('[aria-label="Speak answer"]')).not.toBeNull())
     document.querySelector<HTMLButtonElement>('[aria-label="Speak answer"]')!.click()
@@ -109,6 +112,7 @@ describe('simulated voice workbench preview uses the shared controller and write
   it('starts only on request and retains a spoken comment target when focus moves to notes mid-segment', async () => {
     view = mount(WorkbenchPreview, { target: document.body })
     expect(button('开始一段语音').disabled).toBe(true)
+    await vi.waitFor(() => expect(document.querySelector('[data-review-text]')).not.toBeNull())
     const source = document.querySelector('[data-review-text]')!.textContent
     document.querySelector<HTMLButtonElement>('button[aria-label="Speak comment on paragraph 1"]')!.click()
     await vi.waitFor(() => expect(button('开始一段语音').disabled).toBe(false))

@@ -1,5 +1,5 @@
 import type { WebReviewAnnotation, WebReviewData, WebReviewViewport, WorkbenchState } from '../../generated/feedback'
-import { validWebReviewUrl } from '../../workbenchInputValidation'
+import { validWebReviewUrl } from '../definitions/web_review/input'
 
 export type WebReviewState = Extract<WorkbenchState, { type: 'web_review' }>
 export type WebReviewAnchor = Pick<WebReviewAnnotation, 'page_url' | 'viewport' | 'element'>

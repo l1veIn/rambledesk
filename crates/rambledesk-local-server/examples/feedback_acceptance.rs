@@ -150,6 +150,27 @@ async fn seed(application: &FeedbackApplication) -> anyhow::Result<Vec<Value>> {
             "attachmentIds": attachment_ids,
         }));
     }
+    if std::env::var("RAMBLEDESK_ACCEPTANCE_TERMINAL").as_deref() == Ok("1") {
+        let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()?;
+        let playground = repository.join("playground/workbenches").canonicalize()?;
+        let fixture: Value = serde_json::from_slice(&std::fs::read(
+            playground.join("fixtures/06-terminal.json"),
+        )?)?;
+        let mut workbench = fixture["workbench"].clone();
+        workbench["data"]["cwd"] = json!(playground.to_string_lossy());
+        let request_id = Uuid::now_v7().to_string();
+        application.request_feedback(RequestFeedbackInput {
+            workbench: Some(serde_json::from_value(workbench)?),
+            request_id: Some(request_id.clone()), host_id: Some("acceptance-external".into()),
+            host_session_id: "acceptance-terminal".into(), title: Some("05 · Real PTY terminal trial".into()),
+            what_happened: "Isolated terminal acceptance: try help, greet and interactive choice, quote output and submit feedback with the captured real PTY session.".into(),
+            actions: vec![], context_refs: vec![], attachments: vec![], source_hint: Some("terminal-acceptance fixture v1".into()),
+            allow_finish: false, final_summary: None,
+        }).await?;
+        requests.push(json!({"purpose":"terminal","requestId":request_id,"title":"05 · Real PTY terminal trial","savedRevision":0}));
+    }
     Ok(requests)
 }
 

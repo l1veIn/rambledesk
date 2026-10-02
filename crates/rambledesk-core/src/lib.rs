@@ -14,6 +14,8 @@ mod project_directories;
 pub use project_directories::*;
 mod sessions;
 mod terminal_operations;
+mod terminal_sessions;
+pub use terminal_sessions::*;
 mod workbenches;
 mod workspace;
 pub use workbenches::*;

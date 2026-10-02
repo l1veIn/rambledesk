@@ -1,4 +1,19 @@
 use super::*;
+pub(super) fn draft_valid(data: &DocumentReviewData, state: Option<&WorkbenchState>) -> bool {
+    match state {
+        None => true,
+        Some(WorkbenchState::DocumentReview {
+            annotations,
+            paragraph_marks,
+            ..
+        }) => review_annotations_valid(data, annotations, paragraph_marks),
+        _ => false,
+    }
+}
+pub(super) fn result_has_input(result: Option<&WorkbenchResult>) -> bool {
+    matches!(result, Some(WorkbenchResult::DocumentReview(_)))
+}
+use super::validation::{count, id, text};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -174,4 +189,115 @@ pub(super) fn review_annotations_valid(
                 .iter()
                 .any(|paragraph| paragraph.id == mark.paragraph_id)
     })
+}
+
+pub(super) fn definition() -> WorkbenchDefinition {
+    let (name, purpose, returns, interaction) = (
+        "Document review / 文稿审阅",
+        "Review an immutable script or speech, annotate passages and suggest revisions. 审阅脚本、发言稿或长文。",
+        "Source version, explicit verdict, anchored annotations and paragraph decisions",
+        "document_review",
+    );
+    let mut definition = WorkbenchDefinition::new(
+        WorkbenchSummary {
+            kind: "document_review",
+            version: 1,
+            name,
+            purpose,
+            returns,
+            interaction,
+        },
+        describe,
+    );
+
+    definition.validate_saved_draft = false;
+    definition
+}
+fn describe() -> Result<WorkbenchDescription, ApplicationError> {
+    let (input_schema, result_schema, data, instructions) = (
+        schemars::schema_for!(DocumentReviewData),
+        schemars::schema_for!(DocumentReviewResult),
+        WorkbenchData::DocumentReview(DocumentReviewData {
+            title: "Opening speech".into(),
+            source_version: "draft-1".into(),
+            paragraphs: vec![
+                ReviewParagraph {
+                    id: "opening".into(),
+                    label: Some("Opening".into()),
+                    text: "Thank you for joining us today.".into(),
+                },
+                ReviewParagraph {
+                    id: "purpose".into(),
+                    label: Some("Purpose".into()),
+                    text: "We will decide what to build next.".into(),
+                },
+            ],
+        }),
+        "The source is immutable. Annotate whole paragraphs or exact text ranges; start/end are half-open Unicode scalar offsets, not UTF-16, and quote must exactly match the source slice. Suggestion replacement may be empty to propose deletion; comments have null replacement. All annotations need nonblank body text. Select an explicit ready or changes_requested verdict before submitting; paragraph marks are optional. The verdict is review feedback, never authorization to execute changes. At most 200 paragraphs and 120000 source characters; at most 500 annotations.",
+    );
+    Ok(WorkbenchDescription {
+        summary: definition().summary,
+        example: WorkbenchSpec {
+            kind: "document_review".into(),
+            version: 1,
+            data,
+        },
+        input_schema,
+        result_schema,
+        instructions,
+    })
+}
+pub(super) fn validate(data: &DocumentReviewData) -> Result<(), ApplicationError> {
+    let mut ids = std::collections::HashSet::new();
+
+    text("document_review.title", &data.title, 200)?;
+    text("document_review.source_version", &data.source_version, 128)?;
+    count("document_review.paragraphs", data.paragraphs.len(), 1, 200)?;
+    let mut total = 0;
+    for paragraph in &data.paragraphs {
+        id("document_review.paragraphs.id", &paragraph.id, &mut ids)?;
+        text("document_review.paragraphs.text", &paragraph.text, 8000)?;
+        if let Some(label) = &paragraph.label {
+            crate::feedback::validate_text("document_review.paragraphs.label", label, 0, 128)?;
+        }
+        total += paragraph.text.chars().count();
+    }
+    if total > 120_000 {
+        return Err(ApplicationError::invalid_argument(
+            "document_review source exceeds 120000 Unicode scalar values",
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn result(
+    data: &DocumentReviewData,
+    state: Option<&WorkbenchState>,
+) -> Option<WorkbenchResult> {
+    let Some(WorkbenchState::DocumentReview {
+        verdict: Some(verdict),
+        annotations,
+        paragraph_marks,
+    }) = state
+    else {
+        return None;
+    };
+    if !review_annotations_valid(data, annotations, paragraph_marks) {
+        return None;
+    }
+    Some(WorkbenchResult::DocumentReview(DocumentReviewResult {
+        source_version: data.source_version.clone(),
+        verdict: *verdict,
+        annotations: annotations.clone(),
+        paragraph_marks: paragraph_marks.clone(),
+    }))
+}
+pub(super) fn has_input(_: &DocumentReviewData, state: Option<&WorkbenchState>) -> bool {
+    matches!(state,Some(WorkbenchState::DocumentReview{verdict,annotations,paragraph_marks}) if verdict.is_some() || annotations.iter().any(|a|!a.body.trim().is_empty()) || !paragraph_marks.is_empty())
+}
+pub(super) fn complete(_: &DocumentReviewData, result: Option<&WorkbenchResult>) -> bool {
+    matches!(result, Some(WorkbenchResult::DocumentReview(_)))
+}
+pub(super) fn legacy_actions(_: &DocumentReviewData) -> Vec<ActionInput> {
+    Vec::new()
 }

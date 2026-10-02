@@ -1,6 +1,6 @@
 # 工作台文档入口
 
-当前工作台采用第一方静态类型：共享请求、草稿、反馈列与提交生命周期，各类型拥有独立业务视图。新请求使用 `ramble`、`questions`、`document_review` 或 `web_review`；单题 `questions` 覆盖方案单选，旧 `single_choice` 仅保留合同兼容。
+当前可新建六种正式工作台：`ramble` 自由反馈、`questions` 逐项问答、`document_review` 文稿审阅、`web_review` 网页评审、`terminal` 终端试用和 `sort` 拖动排序。它们共享请求、草稿、反馈列与提交生命周期，各类型拥有独立业务视图。单题 `questions` 覆盖方案单选；旧 `single_choice` 仅保留合同兼容，`rating_review` 仅用于开发验收，不计入正式类型数量。
 
 ## 阅读路径
 
@@ -9,10 +9,14 @@
 | 理解产品范围及这些取舍的原因 | [产品宪章](../CONSTITUTION.md)、[ADR 008](../adr/008-typed-human-feedback-workbenches.md) |
 | 区分类型、视图、Draft、Document、State、Result、Outcome | [术语表](../TERMINOLOGY.md) |
 | 修改运行所有权、静态组合或客户端边界 | [架构](../ARCHITECTURE.md) |
+| 查看框架重构范围与新增普通工作台的目标流程 | [框架设计](framework-plan.md)、[验收记录](framework-validation.md) |
+| 从模板新增自己的普通工作台 | [新增工作台教程](adding-a-workbench.md) |
 | 创建请求、发现类型、读取结果或修改 wire 合同 | [反馈协议](../PROTOCOL.md)；具体类型 schema 由 `describe_workbench` 提供 |
 | 判断当前已实现范围、扩展和验收边界 | [工作台实现状态](../WORKBENCH_EVOLUTION.md) |
 | 修改文稿锚点、批注、删除建议或整稿判断 | [文稿审阅](document-review.md) |
 | 接入网页、选择元素、批注和宽屏评审 | [网页评审](web-review.md) |
+| 让用户试用 CLI、引用输出和保存试用记录 | [终端试用](terminal.md) |
+| 调整条目文字、删除条目和拖动排序 | [排序体验用例](../../playground/workbenches/materials/sort.md) |
 | 修改正文、答案、批注的输入与异步回填 | [请求级共享输入](shared-input.md) |
 | 修改 Rambelle 首次引导、重看和本地记录 | [工作台使用引导](onboarding.md) |
 | 验证存储兼容或旧版本读取 | [数据兼容](../DATA_COMPATIBILITY.md) |

@@ -1,5 +1,21 @@
 use rambledesk_core::{FeedbackDraft, WorkbenchPackage, WorkbenchSpec, WorkbenchSubmissionError};
 
+pub(crate) fn validate_saved_draft(
+    spec: Option<&WorkbenchSpec>,
+    document: &str,
+) -> Result<(), rambledesk_core::RepositoryError> {
+    let Some(spec) = spec else { return Ok(()) };
+    let validated = rambledesk_core::validate_workbench(spec)
+        .map_err(|_| rambledesk_core::RepositoryError::WorkbenchUnsupported)?;
+    if !validated.kind().definition().validate_saved_draft {
+        return Ok(());
+    }
+    let draft = parse_feedback_draft(Some(document), true)
+        .ok_or(rambledesk_core::RepositoryError::WorkbenchIncomplete)?;
+    rambledesk_core::validate_workbench_draft(spec, draft.workbench_state.as_ref())
+        .map_err(|_| rambledesk_core::RepositoryError::WorkbenchIncomplete)
+}
+
 /// Storage owns this envelope codec; the core policy receives parsed domain data.
 fn parse_feedback_draft(document: Option<&str>, strict: bool) -> Option<FeedbackDraft> {
     let value: serde_json::Value = serde_json::from_str(document?).ok()?;
@@ -25,7 +41,12 @@ pub(crate) fn workbench_package(
 ) -> WorkbenchPackage {
     rambledesk_core::workbench_package(
         spec,
-        parse_feedback_draft(document, spec.kind == "web_review").as_ref(),
+        parse_feedback_draft(
+            document,
+            rambledesk_core::validate_workbench(spec)
+                .is_ok_and(|validated| validated.kind().definition().strict_state),
+        )
+        .as_ref(),
         submitted,
     )
 }
@@ -35,13 +56,14 @@ pub(crate) fn prepare_feedback_submission(
     document: Option<&str>,
     body: &str,
 ) -> Result<Option<WorkbenchPackage>, WorkbenchSubmissionError> {
-    let is_web_review = spec.is_some_and(|spec| {
-        spec.kind == "web_review" && rambledesk_core::validate_workbench(spec).is_ok()
+    let requires_strict_state = spec.is_some_and(|spec| {
+        rambledesk_core::validate_workbench(spec)
+            .is_ok_and(|validated| validated.kind().definition().strict_state)
     });
-    let draft = parse_feedback_draft(document, is_web_review);
+    let draft = parse_feedback_draft(document, requires_strict_state);
     // Do not turn malformed structured content into an empty review and publish
     // only the notes. Missing/null state is the legitimate notes-only path.
-    if is_web_review && document.is_some() && draft.is_none() {
+    if requires_strict_state && document.is_some() && draft.is_none() {
         return Err(WorkbenchSubmissionError::Incomplete);
     }
     rambledesk_core::prepare_feedback_submission(spec, draft.as_ref(), body)

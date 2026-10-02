@@ -6,7 +6,7 @@ import { tidySpeechSegments, type TidyConfig } from '../lightCleanup'
 import { shouldAutoTidy } from '../tidyAuto'
 import { applySpeechCleanupResults, speechCleanupCandidates, SPEECH_SEGMENT_ID_ATTR } from './speechBlockMetadata'
 import { collectFieldSpeechSegments, applyFieldSpeechCleanup } from './fieldSpeechSegments'
-import { workbenchIsReadOnly } from '../workbenchPolicy'
+import { workbenchIsReadOnly } from '../workbench/definitions/registry'
 
 export type RequestSpeechTidyState = {
   requestId: string

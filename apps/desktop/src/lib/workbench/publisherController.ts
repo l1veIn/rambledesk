@@ -22,6 +22,8 @@ type PublisherControllerContext = {
   /** External policy, such as a managed session being deleted. */
   isReadOnly: () => boolean
   prepareFeedback: (requestId: string) => Promise<FeedbackPreparation>
+  /** Finish interactive workbenches for every submit entry point before freezing the draft. */
+  prepareWorkbench?: (requestId: string) => Promise<void>
   isInputBusy?: () => boolean
   saveDraftNow: () => Promise<boolean>
   getCookingEnabled: () => boolean
@@ -107,6 +109,13 @@ export function createPublisherController(context: PublisherControllerContext) {
         context.setPageError(context.tr('Review the pending speech in the capsule before submitting feedback.'))
         return
       }
+      if (context.isInputBusy?.()) {
+        context.setPageError(context.tr('Input is still being received. Finish the current input and try again.'))
+        return
+      }
+
+      await context.prepareWorkbench?.(requestId)
+      if (!stillEditable(requestId) || get(context.session).interactionLocked || context.cooking.isCooking(requestId)) return
       if (context.isInputBusy?.()) {
         context.setPageError(context.tr('Input is still being received. Finish the current input and try again.'))
         return

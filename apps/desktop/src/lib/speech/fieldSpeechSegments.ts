@@ -1,6 +1,5 @@
 import { decodeFeedbackDraftEnvelope, type FeedbackDraftSnapshot } from '../feedbackDraftDocument'
-import { decodeWorkbenchState } from '../workbenchPolicy'
-import { sameWorkbenchFieldIdentity } from '../workbenchFields'
+import { readWorkbenchFieldText, sameWorkbenchFieldIdentity } from '../workbenchFields'
 import { captureFieldTidy, replaceFieldTidy, type FieldTidyWorkspace } from './fieldSpeechText'
 import { normalizeSpeechTarget, sameSpeechTarget, snapshotSpeechTarget, type SpeechTarget } from './speechTargets'
 import type { SpeechCleanupReplacement } from './speechBlockMetadata'
@@ -39,8 +38,7 @@ function readSegments(snapshot: FeedbackDraftSnapshot): FieldSpeechSegment[] | n
       || (item.start as number) < 0 || (item.end as number) < (item.start as number)
       || !['pending', 'cleaned', 'edited'].includes(String(item.state)) || typeof item.contract !== 'string' || typeof item.identity !== 'string') return null
     const target = normalizeSpeechTarget(item.target)
-    if (!target || (target.destination.kind !== 'question_answer' && target.destination.kind !== 'review_annotation'
-      && target.destination.kind !== 'web_review_annotation')) return null
+    if (!target || target.destination.kind === 'document' || target.destination.kind === 'unknown') return null
     seen.add(item.segmentId)
     segments.push({ ...item, target } as FieldSpeechSegment)
   }
@@ -54,22 +52,7 @@ function writeSegments(snapshot: FeedbackDraftSnapshot, segments: FieldSpeechSeg
 }
 
 function fieldText(snapshot: FeedbackDraftSnapshot, target: SpeechTarget): string | null {
-  const state = decodeWorkbenchState(decodeFeedbackDraftEnvelope(snapshot.documentJson)?.workbenchState)
-  const destination = target.destination
-  if (destination.kind === 'question_answer' && state?.type === 'questions') {
-    const answers = state.answers.filter((item) => item.id === destination.questionId)
-    return answers.length === 1 && answers[0].wasCustom ? answers[0].value : null
-  }
-  if (destination.kind === 'review_annotation' && state?.type === 'document_review') {
-    const annotations = state.annotations.filter((item) => item.id === destination.annotationId)
-    return annotations.length === 1 && (destination.field === 'body' || annotations[0].kind === 'suggestion')
-      ? annotations[0][destination.field] : null
-  }
-  if (destination.kind === 'web_review_annotation' && state?.type === 'web_review') {
-    const annotations = state.annotations.filter((item) => item.id === destination.annotationId)
-    return annotations.length === 1 ? annotations[0].body : null
-  }
-  return null
+  return readWorkbenchFieldText(snapshot, target)
 }
 
 /** The smallest single changed range is conservative for multi-part edits:
