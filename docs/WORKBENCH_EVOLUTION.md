@@ -20,7 +20,7 @@
 | 差异评审 | 查看固定 diff、切换文件，对修改前后行、行范围及改动块批注；提交批注与整体意见，具体流程由 Agent 编排。 | [差异评审](workbench/diff-review.md) |
 | 类型发现 | `list_workbenches` / `describe_workbench` 提供用途目录与按需 schema；MCP、Generic JSON 和托管命令复用同一合同。 | [协议](PROTOCOL.md)、[ACP 指南](ACP_MANAGED_SESSIONS.md) |
 | 普通类型扩展 | Rust 与前端各有一个静态注册入口；类型拥有合同、规则、字段、视图与示例。脚手架生成业务模块和测试材料，宿主统一草稿、输入和生命周期；测试评分类型验证扩展链路。 | [新增教程](workbench/adding-a-workbench.md)、[框架验收](workbench/framework-validation.md) |
-| 首次引导 | 自由反馈、文稿审阅、网页评审和终端试用提供 Rambelle 聚光步骤，业务视图就绪后按类型和引导版本在客户端记录，可跳过或重看。简单问答和排序不增加引导。 | [首次引导](workbench/onboarding.md) |
+| 首次引导 | 自由反馈、文稿审阅、网页评审、终端试用、视觉反馈和差异评审提供 Rambelle 聚光步骤，业务视图就绪后按类型和引导版本在客户端记录，可跳过或重看。简单问答和排序不增加引导。 | [首次引导](workbench/onboarding.md) |
 
 用户启用／禁用类型、跨客户端引导同步尚未实现，不属于已有发现工具或本地首次引导的隐含能力。Pi / dsh 原生适配器的工具参数仍保留 Ramble 入口；其余类型使用协议列出的入口。
 

@@ -25,7 +25,7 @@
     { id: 'arrow', label: 'Arrow', icon: MoveUpRight }, { id: 'rectangle', label: 'Rectangle', icon: Square }, { id: 'text', label: 'Text', icon: Type }] as const
   const tr = (source: string) => visualText($locale, source)
 </script>
-<div class="flex flex-wrap items-center gap-1.5 rounded-xl border bg-muted/30 p-2" data-visual-toolbar>
+<div class="flex flex-wrap items-center gap-1.5 rounded-xl border bg-muted/30 p-2" data-visual-toolbar data-tour="visual-tools">
   {#if !disabled}
     <div class="flex gap-1" role="group" aria-label={tr('Visual feedback')}>
       {#each tools as item}<button type="button" aria-label={tr(item.label)} title={tr(item.label)} aria-pressed={tool === item.id}
@@ -41,7 +41,7 @@
     <button type="button" class="tool icon" disabled={!canRedo} aria-label={tr('Redo')} title={tr('Redo')} onclick={onRedo}><Redo2 class="size-4" /></button>
     <button type="button" class="tool icon" disabled={!selected} aria-label={tr('Delete annotation')} title={tr('Delete annotation')} onclick={onDelete}><Trash2 class="size-4" /></button>
   {/if}
-  <div class="ml-auto flex items-center gap-1">
+  <div class="ml-auto flex items-center gap-1" data-tour="visual-view-controls">
     <button type="button" class="tool icon" disabled={zoom <= .1} aria-label={tr('Zoom out')} onclick={() => onZoom(Math.max(.1, zoom / 1.25))}><Minus class="size-4" /></button>
     <span class="w-12 text-center text-xs tabular-nums">{Math.round(zoom * 100)}%</span>
     <button type="button" class="tool icon" disabled={zoom >= 4} aria-label={tr('Zoom in')} onclick={() => onZoom(Math.min(4, zoom * 1.25))}><Plus class="size-4" /></button>

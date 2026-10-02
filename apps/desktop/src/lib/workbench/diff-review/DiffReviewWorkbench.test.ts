@@ -10,6 +10,7 @@ import { inputText, replaceInputText } from '../../../test/tiptap'
 import { diffReviewDefinition } from '../definitions/diff_review/definition'
 import type { DiffReviewState } from '../definitions/diff_review/state'
 import DiffReviewWorkbench from './DiffReviewWorkbench.svelte'
+import { getWorkbenchTour } from '../onboarding/workbenchTours'
 
 const originalData = diffReviewDefinition.examples![0].spec.data as DiffReviewData
 const saved: DiffReviewState = { type: 'diff_review', comments: [
@@ -49,6 +50,18 @@ async function key(node: HTMLElement, value: string, shiftKey = false) {
 }
 
 describe('diff review interactions', () => {
+  it('exposes guide landmarks before selecting lines without creating comments or changing the source', async () => {
+    const original = JSON.stringify(originalData)
+    const app = await open()
+    const tour = getWorkbenchTour('diff_review', 'en')!
+    for (const step of tour.steps.filter((step) => step.target !== '[data-feedback-actions]')) {
+      expect(document.querySelector(step.target), step.id).not.toBeNull()
+    }
+    expect(document.querySelectorAll('[data-diff-comment]')).toHaveLength(0)
+    expect(app.props.current.state).toBeNull()
+    expect(app.onChange).not.toHaveBeenCalled()
+    expect(JSON.stringify(originalData)).toBe(original)
+  })
   it('selects a new-side keyboard range, autosaves through the shared field and reopens the same anchor', async () => {
     const app = await open()
     const original = JSON.stringify(originalData)

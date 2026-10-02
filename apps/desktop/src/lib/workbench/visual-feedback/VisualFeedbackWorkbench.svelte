@@ -126,7 +126,7 @@
   {#if loadError}<div role="alert" class="flex items-center gap-3 rounded-lg border border-destructive/30 p-3 text-xs"><span class="flex-1">{tr('Original image unavailable')}: {loadError}</span><button type="button" class="rounded border px-3 py-1.5" onclick={() => void loadBackground(source)}>{tr('Retry')}</button></div>{/if}
   {#if loading}<p role="status" class="m-0 text-xs text-muted-foreground">{tr('Loading original image…')}</p>{/if}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions (The drawing surface supports keyboard undo/delete, with accessible toolbar and annotation-list alternatives.) -->
-  <div bind:this={viewport} role="application" aria-label={tr('Canvas')} tabindex="0" class="visual-viewport" class:drawing={tool !== 'select' && editable}
+  <div bind:this={viewport} role="application" aria-label={tr('Canvas')} tabindex="0" class="visual-viewport" data-tour="visual-canvas" class:drawing={tool !== 'select' && editable}
     onpointerdown={start} onpointermove={move} onpointerup={finish} onpointercancel={cancel} onlostpointercapture={cancel} onkeydown={keyboard}>
     <svg bind:this={sheet} width={data.width * zoom} height={data.height * zoom} viewBox={`0 0 ${data.width} ${data.height}`} role="img" aria-label={tr('Visual feedback')} class="visual-sheet">
       <rect x="0" y="0" width={data.width} height={data.height} fill={data.background_color ?? '#ffffff'} />
@@ -137,7 +137,7 @@
   </div>
   {#if message}<p role="status" class="m-0 text-xs text-amber-700 dark:text-amber-400">{message}</p>{/if}
   <div class="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
-    <div class="min-w-0 rounded-xl border p-3"><h3 class="m-0 mb-2 text-xs font-medium">{tr('Annotations')} <span class="text-muted-foreground">{current.annotations.length}</span></h3>
+    <div class="min-w-0 rounded-xl border p-3" data-tour="visual-annotations"><h3 class="m-0 mb-2 text-xs font-medium">{tr('Annotations')} <span class="text-muted-foreground">{current.annotations.length}</span></h3>
       {#if !current.annotations.length}<p class="m-0 text-xs leading-6 text-muted-foreground">{tr('No annotations yet.')}</p>{:else}<ol class="m-0 grid max-h-60 list-none gap-1 overflow-auto p-0">
         {#each current.annotations as mark, index (mark.id)}<li><button type="button" data-visual-list-id={mark.id} aria-pressed={selectedId === mark.id} onclick={() => void select(mark.id)}
           class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted aria-pressed:bg-primary/10"><span class="size-2 shrink-0 rounded-full" style:background={mark.color}></span><span class="shrink-0 text-muted-foreground">{index + 1}</span><span class="truncate">{visualAttachmentText(mark.text || mark.body, attachments) || tr(mark.kind === 'freehand' ? 'Pen' : mark.kind === 'arrow' ? 'Arrow' : mark.kind === 'text' ? 'Text' : 'Rectangle')}</span></button></li>{/each}

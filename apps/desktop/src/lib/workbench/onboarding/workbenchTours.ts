@@ -1,6 +1,6 @@
 import type { Locale } from '../../preferences'
 
-export type WorkbenchTourId = 'ramble' | 'document_review' | 'web_review' | 'terminal'
+export type WorkbenchTourId = 'ramble' | 'document_review' | 'web_review' | 'terminal' | 'visual_feedback' | 'diff_review'
 
 export type WorkbenchTourStep = {
   id: string
@@ -138,11 +138,66 @@ const steps: Record<WorkbenchTourId, LocalizedStep[]> = {
       body: ['在右侧写下体验结果并提交。提交会收尾仍在运行的终端，并保存试用输出和最后的画面；引导本身不会启动终端或执行命令。', 'Write your experience on the right and submit when ready. Submission finishes any running terminal and preserves trial output and the final screen. This guide never starts a terminal or runs commands.'],
     },
   ],
+  visual_feedback: [
+    {
+      id: 'tools', target: '[data-tour="visual-tools"]',
+      title: ['选择工具，把想法画出来', 'Choose a tool to sketch your idea'],
+      body: ['使用自由笔、箭头、矩形或文字表达视觉指引；颜色、线宽和文字大小也在这里调整。撤销和重做可以回退操作，选择工具用于选中已有标注。', 'Use the pen, arrows, rectangles or text to share visual guidance. Adjust colors, line widths and text sizes here. Undo and redo let you revisit edits; Select picks an existing annotation.'],
+    },
+    {
+      id: 'canvas', target: '[data-tour="visual-canvas"]',
+      title: ['在原图或空白画布上标记', 'Mark the image or blank canvas'],
+      body: ['拖动绘制线条、箭头或矩形；文字工具点击后可以编辑文字。图片背景保持不变，标注单独保存；引导不会替你绘制。', 'Drag to draw a line, arrow or rectangle. With the text tool, click to place editable text. The background image stays unchanged and annotations are saved separately. This guide does not draw for you.'],
+    },
+    {
+      id: 'view', target: '[data-tour="visual-view-controls"]',
+      title: ['缩放或全屏，继续同一份草稿', 'Zoom or go full screen with the same draft'],
+      body: ['放大、缩小或适合窗口只改变显示，标注位置保持不变。需要更多空间时打开全屏画布，返回后继续同一份草稿。', 'Zoom in, zoom out or fit the canvas without changing annotation positions. Open the full screen canvas when you need more room, then return to the same draft.'],
+    },
+    {
+      id: 'annotations', target: '[data-tour="visual-annotations"]',
+      title: ['选择标注，补充具体意见', 'Select an annotation to add feedback'],
+      body: ['这里列出已有标注。点击一条可以编辑文字、补充意见，也能使用语音和附件；删除标注使用上方工具栏。只有整体想法时，也可以直接写在右侧正文。', 'Your annotations appear here. Select one to edit its text or add a comment, using voice and attachments if helpful. Delete the selected annotation from the toolbar above. You can also write only overall feedback on the right.'],
+    },
+    {
+      id: 'submit', target: '[data-feedback-actions]',
+      title: ['把图片和意见一起提交', 'Send the image and your feedback'],
+      body: ['检查标注与整体说明后提交。工作台会生成带标注的 PNG，连同结构化意见发送给 Agent；只写整体说明时也会附上当前画布。标题旁可以随时重看引导。', 'Check your annotations and overall feedback, then submit. The workbench creates an annotated PNG and sends it with structured comments to the agent. Overall feedback alone also includes the current canvas. Reopen this guide beside the title at any time.'],
+    },
+  ],
+  diff_review: [
+    {
+      id: 'files', target: '[data-tour="diff-files"]',
+      title: ['按文件浏览这次改动', 'Browse the changes by file'],
+      body: ['点击文件名切换 diff，旁边的数字表示新增和删除的行数。本次请求的差异内容保持固定，文件路径用于定位评审意见。', 'Select a file to switch diffs. The counts beside its name show added and deleted lines. The request preserves a fixed diff, and file paths locate your review comments.'],
+    },
+    {
+      id: 'lines', target: '[data-diff-source]',
+      title: ['区分修改前后，再选择行号', 'Choose a line before or after the change'],
+      body: ['左列行号对应修改前，右列对应修改后；红色表示删除，绿色表示新增。点击对应侧的行号定位意见，按住 Shift 再点击另一行可选择同一个改动块、同一侧的行范围。', 'The left line-number column is before the change, and the right is after it. Red marks deletions and green marks additions. Click a line number to anchor feedback. Shift-click another line to select a range within the same hunk and side.'],
+    },
+    {
+      id: 'comment', target: '[data-tour="diff-selection"]',
+      title: ['为选中范围或整个改动块批注', 'Comment on a range or a whole hunk'],
+      body: ['选中行后点击添加批注，或按 C 开始写意见。针对整个改动块，可以使用 @@ 标题旁的批注按钮；无需先选择行。Shift 加上下方向键也能调整行范围。', 'After selecting a line or range, use Add comment or press C to write feedback. To comment on a whole hunk, use the comment button beside its @@ header without selecting lines. Shift with the up or down arrow keys also adjusts a range.'],
+    },
+    {
+      id: 'comments', target: '[data-tour="diff-comments"]',
+      title: ['从批注回到对应改动', 'Return to a change from its comment'],
+      body: ['批注集中在这里。点击一条会切换到对应文件和位置，可以继续填写、使用语音和附件，或删除批注。全屏评审继续同一份草稿。', 'Your comments are collected here. Select one to return to its file and location, continue writing, use voice and attachments, or delete it. Full screen review continues the same draft.'],
+    },
+    {
+      id: 'submit', target: '[data-feedback-actions]',
+      title: ['检查位置和意见，再提交', 'Check locations and feedback, then send'],
+      body: ['提交前填写已有批注的意见，也可以在右侧补充整体说明；仅提交整体说明同样可以。工作台会把固定 diff 的位置和意见发送给 Agent，不要求选择审批结论。标题旁可以重看引导。', 'Fill in existing comments before submitting, and add overall feedback on the right if needed. Overall feedback alone is also valid. The workbench sends locations in the fixed diff and your comments to the agent without requiring an approval decision. Reopen this guide beside the title.'],
+    },
+  ],
 }
 
 /** Only workbenches with an authored guide participate in first-use onboarding. */
 export function getWorkbenchTour(type: string | null | undefined, locale: Locale): WorkbenchTour | null {
-  if (type !== 'ramble' && type !== 'document_review' && type !== 'web_review' && type !== 'terminal') return null
+  if (type !== 'ramble' && type !== 'document_review' && type !== 'web_review' && type !== 'terminal'
+    && type !== 'visual_feedback' && type !== 'diff_review') return null
   const zh = locale === 'zh-CN'
   const language = zh ? 0 : 1
   return {

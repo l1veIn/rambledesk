@@ -133,7 +133,7 @@
     {#if onOpenExpanded}<button type="button" class="inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-2 text-xs" onclick={onOpenExpanded}><Maximize2 class="size-3.5" />{tr('Full screen review')}</button>{/if}
   </header>
   <p class="m-0 text-xs leading-5 text-muted-foreground">{tr('The original diff is preserved. Add comments; write overall feedback on the right.')}</p>
-  <nav class="flex flex-wrap gap-2" aria-label={tr('Files')}>
+  <nav class="flex flex-wrap gap-2" aria-label={tr('Files')} data-tour="diff-files">
     {#each files as item (item.file.id)}
       <button type="button" data-diff-file={item.file.id} aria-current={active.file.id === item.file.id ? 'page' : undefined}
         title={`${item.file.old_path} → ${item.file.new_path}`} onclick={() => selectFile(item.file.id)}
@@ -147,7 +147,7 @@
     <div class="min-w-0">
       {#if active.file.old_path !== active.file.new_path}<p class="mb-2 mt-0 break-all font-mono text-[11px] text-muted-foreground">{active.file.old_path} → {active.file.new_path}</p>{/if}
       {#if editable}<p class="mb-2 mt-0 text-[11px] leading-5 text-muted-foreground">{tr('Choose an old or new line number. Shift-click or Shift + ↑/↓ selects a range within one hunk and side. Press C to comment.')}</p>{/if}
-      <div class="mb-2 flex min-h-9 flex-wrap items-center gap-2">
+      <div class="mb-2 flex min-h-9 flex-wrap items-center gap-2" data-tour="diff-selection">
         {#if selection && selection.file_id === active.file.id}<span class="min-w-0 flex-1 truncate font-mono text-[11px]" title={diffAnchorLabel(active.file, selection)}>{diffAnchorLabel(active.file, selection)}</span>
           <button type="button" aria-label={tr('Clear selection')} title={tr('Clear selection')} onclick={() => { selection = null; selectionOrigin = null }} class="rounded-md p-1.5 hover:bg-muted"><X class="size-3.5" /></button>{/if}
         {#if editable}<button type="button" data-diff-add-comment disabled={!selection || current.comments.length >= 500} onclick={() => void addComment()}
@@ -188,7 +188,7 @@
         <button type="button" disabled={pageStart + pageSize >= totalLines} onclick={() => pageStart += pageSize} class="underline disabled:opacity-40">{tr('Next lines')}</button>
       </div>{/if}
     </div>
-    <aside class="min-w-0" aria-label={tr('Comments')}>
+    <aside class="min-w-0" aria-label={tr('Comments')} data-tour="diff-comments">
       <h3 class="mb-3 mt-0 text-xs font-semibold">{tr('Comments')} · {current.comments.length}</h3>
       {#if !current.comments.length}<p class="m-0 text-xs leading-5 text-muted-foreground">{tr('No comments yet. You can also submit only overall feedback.')}</p>{/if}
       <div class="grid gap-2">

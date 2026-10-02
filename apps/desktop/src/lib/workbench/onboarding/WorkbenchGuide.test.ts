@@ -60,6 +60,14 @@ beforeEach(() => {
     <div data-terminal-toolbar><button>Start terminal</button></div>
     <div data-terminal-surface>Terminal</div>
     <button data-tour="terminal-quote" disabled>Quote selected output</button>
+    <div data-tour="visual-tools"><button>Arrow</button></div>
+    <div data-tour="visual-canvas">Blank canvas</div>
+    <div data-tour="visual-view-controls"><button>Undo</button></div>
+    <div data-tour="visual-annotations">No annotations yet</div>
+    <nav data-tour="diff-files"><button>source.ts</button></nav>
+    <div data-diff-source>Original diff</div>
+    <div data-tour="diff-selection"><button disabled>Add comment</button></div>
+    <div data-tour="diff-comments">No comments yet</div>
     <button data-feedback-actions>Submit feedback</button>
   `
   document.body.append(scope)
@@ -89,20 +97,21 @@ function open(initial: { kind?: string; requestId?: string; disabled?: boolean; 
 }
 
 describe('workbench first-use guide', () => {
-  it('opens on the first editable visit and remembers an explicit skip across requests', async () => {
-    const state = open()
-    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Start with the context'))
+  it.each(['ramble', 'visual_feedback', 'diff_review'])('opens %s on the first editable visit and remembers an explicit skip across requests', async (kind) => {
+    const state = open({ kind })
+    const tour = getWorkbenchTour(kind, 'en')!
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain(tour.steps[0].title))
     expect(dialog()?.textContent).toContain('Step 1 of 5')
-    expect(seen.store!.hasSeen('ramble', 1)).toBe(false)
+    expect(seen.store!.hasSeen(tour.id, 1)).toBe(false)
     button('Skip guide').click()
     await vi.waitFor(() => expect(dialog()).toBeNull())
-    expect(JSON.parse(localStorage.getItem('rambledesk.workbench-tour.ramble')!)).toEqual({ version: 1 })
+    expect(JSON.parse(localStorage.getItem(`rambledesk.workbench-tour.${kind}`)!)).toEqual({ version: 1 })
     state.update((current) => ({ ...current, requestId: 'request-2' }))
     await tick()
     expect(dialog()).toBeNull()
   })
 
-  it.each(['document_review', 'web_review', 'terminal'])('navigates %s without clicking or changing the underlying workbench', async (kind) => {
+  it.each(['document_review', 'web_review', 'terminal', 'visual_feedback', 'diff_review'])('navigates %s without clicking or changing the underlying workbench', async (kind) => {
     const businessAction = vi.fn()
     scope.querySelectorAll('button').forEach((element) => element.addEventListener('click', businessAction))
     open({ kind })
@@ -122,6 +131,10 @@ describe('workbench first-use guide', () => {
     expect(businessAction).not.toHaveBeenCalled()
     expect(scope.querySelector('input')!.value).toBe('Existing feedback')
     expect(scope.querySelector('[data-review-text]')!.textContent).toBe('Original paragraph')
+    expect(scope.querySelector('[data-tour="visual-canvas"]')!.textContent).toBe('Blank canvas')
+    expect(scope.querySelector('[data-tour="visual-annotations"]')!.textContent).toBe('No annotations yet')
+    expect(scope.querySelector('[data-diff-source]')!.textContent).toBe('Original diff')
+    expect(scope.querySelector('[data-tour="diff-comments"]')!.textContent).toBe('No comments yet')
   })
 
   it('waits for the lazy view, then starts the current type without consuming first use', async () => {
@@ -155,6 +168,24 @@ describe('workbench first-use guide', () => {
     state.update((current) => ({ ...current, kind: 'document_review' }))
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Keep the original, add your feedback'))
     expect(seen.store!.hasSeen('document_review', 1)).toBe(false)
+  })
+
+  it.each(['visual_feedback', 'diff_review'] as const)('replays the completed %s guide without consuming the other new workbench first use', async (kind) => {
+    const otherKind = kind === 'visual_feedback' ? 'diff_review' : 'visual_feedback'
+    seen.store!.markSeen(kind, 1)
+    seen.store = createWorkbenchTourSeenStore()
+    const state = open({ kind })
+    await tick()
+    expect(dialog()).toBeNull()
+    expect(trigger().textContent).toContain('Show guide')
+    trigger().click()
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain(getWorkbenchTour(kind, 'en')!.steps[0].title))
+    button('Skip guide').click()
+    await vi.waitFor(() => expect(dialog()).toBeNull())
+    expect(seen.store!.hasSeen(otherKind, 1)).toBe(false)
+    state.update((current) => ({ ...current, kind: otherKind, requestId: 'request-2' }))
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain(getWorkbenchTour(otherKind, 'en')!.steps[0].title))
+    expect(seen.store!.hasSeen(otherKind, 1)).toBe(false)
   })
 
   it('waits for editing to become available and does not persist or restart when an operation interrupts it', async () => {

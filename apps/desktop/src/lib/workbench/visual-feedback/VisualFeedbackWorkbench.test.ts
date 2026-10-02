@@ -7,6 +7,7 @@ import type { VisualFeedbackData } from '../../generated/feedback'
 import { emptyVisualState, type VisualState } from './visualModel'
 import Harness from './VisualTestHarness.svelte'
 import VisualMarks from './VisualMarks.svelte'
+import { getWorkbenchTour } from '../onboarding/workbenchTours'
 
 const data: VisualFeedbackData = { title: 'Sketch', source_version: 'snapshot-1', width: 960, height: 600, image_file_name: null, background_color: '#fff8ed' }
 const mark = { id: 'saved_mark', kind: 'arrow' as const, points: [{ x: 20, y: 30 }, { x: 200, y: 180 }], color: '#e5484d', stroke_width: 4, text: '', body: 'Move this' }
@@ -29,6 +30,17 @@ beforeEach(() => {
 })
 afterEach(async () => { if (view) await unmount(view); view = undefined; document.body.replaceChildren(); vi.restoreAllMocks(); vi.unstubAllGlobals(); locale.set('zh-CN') })
 describe('visual drawing and recovered feedback', () => {
+  it('exposes guide landmarks before drawing without changing an empty draft or creating annotations', async () => {
+    const initial = emptyVisualState()
+    await open(initial)
+    const tour = getWorkbenchTour('visual_feedback', 'en')!
+    for (const step of tour.steps.filter((step) => step.target !== '[data-feedback-actions]')) {
+      expect(document.querySelector(step.target), step.id).not.toBeNull()
+    }
+    expect(document.querySelectorAll('[data-visual-mark-id]')).toHaveLength(0)
+    expect(get(state)).toEqual(initial)
+    expect(onChange).not.toHaveBeenCalled()
+  })
   it('renders chip-free canvas text without mutating the annotation source', async () => {
     const text = 'Move this\n\n[spec.pdf](attachment://known_file)\n\n[Other](attachment://unknown_file)'
     const annotation = { ...mark, kind: 'text' as const, points: [{ x: 20, y: 30 }], text }

@@ -30,7 +30,7 @@ Human feedback workbenches
 - Drag sorting supports keyboard and pointer reordering, label edits, deletion and restoration. Submitted results keep final labels, order, and deleted IDs; sorting stays in the ordinary view.
 - Visual feedback supports freehand strokes, arrows, rectangles, and text on a saved image or blank canvas. Drafts retain editable annotations; submission saves a composed PNG and structured feedback.
 - Diff review attaches comments to old or new lines, line ranges, or hunks in an immutable file diff. Overall feedback shares the ordinary submission flow without imposing an approval workflow.
-- Web review and terminal trials now offer first-use guides and a Show guide entry. Guides wait for the workbench view and explain controls without starting a terminal or creating comments.
+- Web review, terminal trials, visual feedback, and diff review now offer five-step first-use guides and a Show guide entry. Guides wait for the workbench view and explain controls without changing the draft, creating annotations or comments, or starting a terminal.
 
 Workspace and extension development
 - Request context and materials stay above the workbench's scrolling content. The feedback column shares one draft and submission flow with every type.
@@ -49,7 +49,7 @@ Acceptance boundaries
 - 终端运行在后端主机，主动开始或重启，每请求最多保存 16 轮，选中输出可引用到正文，提交前停止并收尾输出。排序支持拖动、键盘、名称编辑、删除与恢复，结果保留最终名称、顺序及删除 ID，普通视图无全屏入口。
 - 终端新增四种配色预设，切换即时生效并保留正在运行的试用，普通、全屏和历史视图共用已保存的样式。请求页面三列表头高度统一，收起请求栏时隐藏筛选按钮和数量，保留请求快捷入口。
 - 视觉反馈支持已有图片和空白画布上的简笔、箭头、矩形与文字，草稿保留可编辑标注，提交保存合成 PNG；差异评审将批注绑定到固定 diff 的修改前后行、行范围或改动块，具体流程由 Agent 编排。
-- 网页评审和终端试用增加首次使用引导及手动重看入口，等待业务视图加载完成后出现，不自动创建批注、启动终端或执行命令。
+- 网页评审、终端试用、视觉反馈和差异评审增加五步首次使用引导及手动重看入口，等待业务视图加载完成后出现，不自动修改草稿、创建标注或批注、启动终端或执行命令。
 - 公共情况说明和材料固定在业务区上方；普通类型通过两份共享注册文件扩展，脚手架默认关闭全屏，rating_review 仅供开发验收。
 - Playground 用十个场景覆盖八种正式类型，分别体验空白画布和图片批注，再以汇总请求收尾；自动化与预览不能替代真实设备验收。类型化框架与本轮专用工作台扩展属于 0.4.0 之后的源码开发，已发布的 0.4.0 保留既有 Ramble 流程。
 
