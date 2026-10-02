@@ -2,7 +2,7 @@
   import { canSubmitWorkbench, readWorkbenchState, withWorkbenchState } from './lib/workbenchState'
   import { createWorkbenchLifecycle } from './lib/workbench/workbenchLifecycle'
   import { reconcileFieldSpeechSegments } from './lib/speech/fieldSpeechSegments'
-  import { workbenchIsReadOnly } from './lib/workbenchPolicy'
+  import { workbenchIsReadOnly } from './lib/workbench/definitions/registry'
   import { onMount, tick } from 'svelte'
   import { createRequestInputComposition } from './lib/workbench/requestInputComposition'
   import RequestSpeechTools from './lib/speech/RequestSpeechTools.svelte'

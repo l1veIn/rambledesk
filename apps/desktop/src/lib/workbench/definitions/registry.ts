@@ -30,3 +30,9 @@ export function resolveWorkbenchDefinition(spec: WorkbenchSpec | null | undefine
 export function decodeRegisteredWorkbenchState(value: unknown): WorkbenchState | null {
   return record(value) && text(value.type) ? getWorkbenchDefinition(value.type)?.decodeState(value) ?? null : null
 }
+export function workbenchIsReadOnly(spec: WorkbenchSpec | null | undefined): boolean {
+  return resolveWorkbenchDefinition(spec) === null
+}
+export function workbenchSupportsApproval(spec: WorkbenchSpec | null | undefined): boolean {
+  return resolveWorkbenchDefinition(spec)?.supportsApproval === true
+}

@@ -3,7 +3,6 @@ import { get, writable } from 'svelte/store'
 import type {
   FeedbackRequestSummary,
   HostSessionSummary,
-  ListFeedbackRequestsInput,
   ListFeedbackRequestsOutput,
 } from '../feedback'
 import type { ApplicationTransport } from '../application/applicationTransport'
@@ -18,8 +17,7 @@ import {
   notificationSoundEnabled,
   notificationVolume,
 } from '../preferences'
-import type { HostProfile } from '../domain/hostProfile'
-import { filterRequestPage, requestFilterStatuses, type RequestFilters } from '../domain/requestFilters'
+import { filterRequestPage, type RequestFilters } from '../domain/requestFilters'
 import { createHostSessionFacts, resolveHostProfile as resolveHostProfileFrom } from './navigation/hostSessionFacts'
 import {
   now,

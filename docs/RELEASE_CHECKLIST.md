@@ -24,6 +24,9 @@ README 必须明确对应的 SmartScreen / Gatekeeper 首次启动步骤。
 - `cargo test -p rambledesk-desktop --locked --target-dir target/desktop`
 - `pnpm build:web`
 - `pnpm contracts:check`
+- `pnpm test:workbench-tools`
+- `cargo test -p rambledesk-core -p rambledesk-storage --features workbench-fixtures --locked`
+- `pnpm test:workbench-extension`（合同检查后单独运行，期间不并发修改源码、生成合同或构建）
 - `pnpm mcp:inspector-smoke`
 - 稳定版：`pnpm -C apps/desktop tauri build --target x86_64-pc-windows-msvc --bundles nsis,msi`
 - RC：`pnpm -C apps/desktop tauri build --target x86_64-pc-windows-msvc --bundles nsis`（WiX/MSI 不接受 `rc.1` 这类 SemVer 预发布标识）
@@ -31,6 +34,8 @@ README 必须明确对应的 SmartScreen / Gatekeeper 首次启动步骤。
 
 不要把 `cargo build --release` 生成的裸二进制作为发行产物。它不会执行 Tauri 的
 `beforeBuildCommand`，因此不能代表嵌入生产前端后的应用。
+
+默认生产构建只发现六种正式工作台，旧 `single_choice` 保留兼容，开发评分 `rating_review` 不进入生产目录或视图 bundle。开发 feature 验收与扩展演练单独运行，不能据此把测试类型编入发行包。
 
 ## Signing, notarization and updater
 
@@ -102,7 +107,7 @@ RC 保留 SemVer 预发布后缀，在 GitHub 中保持 `prerelease=true`，发�
 16. 将外部适配器作为保留用户原有 Agent 应用或 CLI 工作方式的轻量接入路径独立回归，RambleDesk 负责接收反馈请求并返回回复；只有显式进入设置页才执行其检测，不作为推荐的 ACP 集成流程的新用户验收前置条件。
 17. 按 [数据兼容说明](DATA_COMPATIBILITY.md) 验证“0.3.3 → 新版 → 0.3.3 → 新版”：旧式反馈读写可用，ACP 与工作台数据保留。0.3.3 不理解新类型工作台的只读保护，不用旧版编辑或提交这些请求。另模拟未知数据库版本与读取超时，确认显示错误、恢复入口可用且不会无限加载。
 18. 验证项目侧栏：同目录不同 Agent 的会话归入同一项目，同名不同路径分开；旧会话无目录时仍可打开。从项目中新建会话带入目录，全局新建要求选择目录；切换 Agent 保留文字和目录。检查置顶、归档、搜索及清除搜索，并在慢连接时快速切换到新建会话，确认旧加载结果不会覆盖当前页面。
-19. 用 [工作台 Playground](../playground/workbenches/README.md) 完成自由反馈、逐项问答（含单题选择）和文稿审阅；检查字段间语音切换、语音标识、集中整理与附件归属、批注续写及收起、段落删除线、保存恢复和提交结果。兼容旧请求另行验证，不作为新请求模板。
+19. 用 [工作台 Playground](../playground/workbenches/README.md) 的七个场景覆盖六种正式类型：自由反馈、逐项问答（含单题选择）、文稿审阅、网页评审、终端试用和拖动排序，再完成汇总请求。检查共享输入的固定归属、集中整理、草稿恢复与结构化提交；文稿检查批注续写、收起和删除线，网页检查 bridge、视口及普通/全屏页签共用页面状态，终端检查停止/退出后重开、多轮记录、重连及提交前最终输出，排序检查名称编辑、删除/恢复、键盘/拖动和最终结果。全屏仅验主动开启的类型，排序和普通模板不得出现入口；左侧会话导航保持可用。旧合同兼容单独验证，开发评分不计入正式数量；设备和平台未体验的项明确记为“未验证”。
 20. 在桌面与 Web 验证目录浏览、起步卡片只填入不发送、关闭全部 tab 的空白页，以及内置会话指令的可见性；目录应属于 Backend Runtime 所在机器。
 
 ## Publishing
@@ -110,6 +115,8 @@ RC 保留 SemVer 预发布后缀，在 GitHub 中保持 `prerelease=true`，发�
 发行目标以本次授权的版本和根目录 `package.json` 的 `version` 为准，标签为 `v<version>`。
 先运行 `pnpm release:check v<version>`，确认工作区清单、Cargo 元数据和 Tauri 配置一致；
 发布的标签必须指向通过验证、包含本次交付的提交。
+
+`CHANGELOG.md` 的 `Unreleased` 保存尚未发行的源码变化。确定本次版本后，将相关内容整理为该版本的 `## v<version>` 条目，保留已发布条目；`release-notes.mjs` 按标签抽取版本条目，不会把 `Unreleased` 自动当成发行说明。
 
 Tag 工作流创建 Draft Release：RC 自动设置 `prerelease=true`，Windows 只构建 NSIS；
 稳定版同时构建 NSIS/MSI。两者都必须等待 Apple Silicon DMG 和跨平台 `SHA256SUMS.txt`

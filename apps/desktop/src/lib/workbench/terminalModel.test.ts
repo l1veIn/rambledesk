@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TerminalData, TerminalTrialSession, WorkbenchSpec } from '../generated/feedback'
-import { resolveWorkbenchPolicy, decodeWorkbenchState, workbenchSupportsApproval } from '../workbenchPolicy'
+import { resolveWorkbenchDefinition, decodeRegisteredWorkbenchState, workbenchSupportsApproval } from './definitions/registry'
 import { canSubmitWorkbench, readWorkbenchState, withWorkbenchState } from '../workbenchState'
 import { snapshotFeedbackDraftMarkdown, updateFeedbackDraftDocument } from '../feedbackDraftDocument'
 import { emptyTerminalState, validateTerminalState } from './terminalModel'
@@ -13,7 +13,7 @@ const state = () => ({ type: 'terminal' as const, sessions: [session()] })
 
 describe('terminal trial contract', () => {
   it('requires an opinion even with output, preserves notes-only feedback, and exposes no approval', () => {
-    expect(resolveWorkbenchPolicy(spec)?.type).toBe('terminal')
+    expect(resolveWorkbenchDefinition(spec)?.type).toBe('terminal')
     expect(workbenchSupportsApproval(spec)).toBe(false)
     expect(canSubmitWorkbench(spec, state(), '')).toBe(false)
     expect(canSubmitWorkbench(spec, state(), 'Help is clear')).toBe(true)
@@ -30,7 +30,7 @@ describe('terminal trial contract', () => {
       { type: 'paragraph', content: [{ type: 'text', text: 'Added opinion and screenshot', marks: [{ type: 'link', attrs: { href: 'attachment://shot' } }] }] },
     ] }))
     expect(readWorkbenchState(changed.documentJson)).toEqual(evidence)
-    expect(decodeWorkbenchState(evidence)).toEqual(evidence)
+    expect(decodeRegisteredWorkbenchState(evidence)).toEqual(evidence)
     expect(validateTerminalState(data, evidence)).toBeNull()
     expect(evidence.sessions[0]).not.toHaveProperty('input')
     expect(evidence.sessions[0]).not.toHaveProperty('commands')
@@ -54,20 +54,20 @@ describe('terminal trial contract', () => {
   })
 
   it('keeps structurally editable invalid drafts but rejects broken shapes', () => {
-    expect(decodeWorkbenchState({ type: 'terminal', sessions: [{ ...session(), cols: 1 }] })).not.toBeNull()
+    expect(decodeRegisteredWorkbenchState({ type: 'terminal', sessions: [{ ...session(), cols: 1 }] })).not.toBeNull()
     for (const bad of [{ type: 'terminal', sessions: [{}] }, { type: 'terminal', sessions: null },
-      { type: 'terminal', sessions: [{ ...session(), status: 'unknown' }] }]) expect(decodeWorkbenchState(bad)).toBeNull()
+      { type: 'terminal', sessions: [{ ...session(), status: 'unknown' }] }]) expect(decodeRegisteredWorkbenchState(bad)).toBeNull()
   })
 
   it('rejects suggestion controls, unknown input fields, duplicate command ids and future versions', () => {
     for (const control of ['\n', '\r', '\t', '\x1b', '\x7f']) {
       const input = { ...spec, data: { ...data, commands: [{ ...data.commands[0], command: `my-cli${control}` }] } }
-      expect(resolveWorkbenchPolicy(input)).toBeNull()
+      expect(resolveWorkbenchDefinition(input)).toBeNull()
     }
     for (const input of [{ ...spec, version: 2 }, { ...spec, data: { ...data, future: true } },
       { ...spec, data: { ...data, commands: [data.commands[0], data.commands[0]] } },
       { ...spec, data: { ...data, commands: [{ ...data.commands[0], command: '😀'.repeat(4001) }] } }]) {
-      expect(resolveWorkbenchPolicy(input)).toBeNull()
+      expect(resolveWorkbenchDefinition(input)).toBeNull()
     }
   })
 })

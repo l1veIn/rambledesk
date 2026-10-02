@@ -13,6 +13,7 @@ sequenceDiagram
     participant Save as Draft Controller
     participant Publish as Publisher
     participant Input as Ramble Input Owner
+    participant Workbench as Workbench Lifecycle
     participant Backend as Backend Runtime
     UI->>Draft: edit(Draft envelope: doc + workbenchState)
     Draft-->>UI: dirty / save phase
@@ -21,6 +22,9 @@ sequenceDiagram
     Input->>Input: 结束录音，排空已接纳的输入
     Input-->>Publish: ready / pending-speech / failed
     Note over Publish: 只有 ready 且目标仍有效才继续
+    Publish->>Workbench: prepareSubmission(request id)
+    Workbench->>Workbench: 按需排空按键、停止资源并归并最终输出
+    Workbench-->>Publish: 完成，或失败
     Publish->>Save: saveDraftNow()
     loop 直到当前 Draft 与已保存 Draft 相同
         Save->>Backend: saveFeedbackDraft(snapshot, expected revision)
@@ -101,13 +105,16 @@ rc3 原来的 `$: feedbackResult = workspaceSession.feedbackResult()` 隐藏了 
 
 1. 检查终态、只读限制和正在进行的操作。
 2. 等输入 owner 结束录音、排空已接纳的语音与剪贴板写入，并取得明确准备结果。
-3. 锁定编辑和工作区切换，等待保存完成。
-4. 固定请求、整个 Draft 和后端确认的 revision，并通过工作台完整性校验；填写正文不能绕过必答项。
-5. 按需取得 Cooking 结果，再发布。
-6. 应用后端返回的终态，读取反馈包，并释放本次操作持有的状态。
+3. 通过请求级工作台 controller 执行可选收尾；终端排空已接受按键、停止各轮会话并合并最终输出，再复核目标和输入状态。
+4. 锁定编辑和工作区切换，等待保存完成。
+5. 固定请求、整个 Draft 和后端确认的 revision，并通过工作台完整性校验；填写正文不能绕过必答项。
+6. 按需取得 Cooking 结果，再发布；后端再次校验类型合同与实际资源完成条件。
+7. 应用后端返回的终态，读取反馈包，并释放本次操作持有的状态。
 
 `activeSubmission` 在异步准备开始前就被占用，连续点击加入同一次提交。
 语音落稿完成后才锁定编辑，保证停止录音时的最后一段内容仍能通过既有文档队列写入捕获时的正文、答案或批注。附件导入和整理也参与请求级输入准备；字段或原稿版本已失效时不能转投到当前正文。
+
+工作台收尾由 [workbenchLifecycle.ts](../apps/desktop/src/lib/workbench/workbenchLifecycle.ts) 按请求持有，视图只 attach/detach；任务页签、反馈列和原生控制台的提交调用同一控制路径。终端视图未挂载时仍需完成资源收尾，后端的运行状态不能从客户端草稿中的 `stopped` 推断。具体规则见[终端试用](workbench/terminal.md)。
 
 调用者使用 [requestInputPreparation](../apps/desktop/src/lib/workbench/requestInputPreparation.ts) 的 `prepareFeedback`：先排空语音与剪贴板，再等待附件操作，复查一轮以覆盖期间接纳的新输入。结果类型与 [RambleSessionControllerHandle](../apps/desktop/src/lib/speech/rambleSessionControllerHandle.ts) 共享：
 

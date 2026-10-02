@@ -44,8 +44,11 @@ jobs:
       - run: pnpm test
       - run: pnpm test:pi
       - run: pnpm test:dsh
+      - run: pnpm test:workbench-tools
+      - run: cargo test -p rambledesk-core -p rambledesk-storage --features workbench-fixtures
       - run: pnpm build:web
       - run: pnpm contracts:check
+      - run: pnpm test:workbench-extension
       - run: pnpm mcp:inspector-smoke
 
   verify-windows:
@@ -77,6 +80,8 @@ jobs:
       - run: cargo test -p rambledesk-desktop --all-targets --target-dir target/desktop
       - run: pnpm check
       - run: pnpm test
+      - run: pnpm test:workbench-tools
+      - run: cargo test -p rambledesk-core -p rambledesk-storage --features workbench-fixtures
       - run: pnpm build:web
       - run: pnpm contracts:check
 
@@ -109,5 +114,7 @@ jobs:
       - run: cargo test -p rambledesk-desktop --all-targets --target-dir target/desktop
       - run: pnpm check
       - run: pnpm test
+      - run: pnpm test:workbench-tools
+      - run: cargo test -p rambledesk-core -p rambledesk-storage --features workbench-fixtures
       - run: pnpm build:web
       - run: pnpm contracts:check

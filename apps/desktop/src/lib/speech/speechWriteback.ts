@@ -1,7 +1,7 @@
 import { applyDraftOperation, type DraftOperation } from '../draftOperations'
 import { isWorkbenchFieldDestination, sameInputTarget, type InputWriteWorkspace, type WorkbenchFieldDestination } from '../domain/inputTarget'
 import { decodeFeedbackDraftEnvelope, restoreFeedbackDraftSnapshot, updateFeedbackDraftDocument, type FeedbackDraftSnapshot } from '../feedbackDraftDocument'
-import { resolveWorkbenchPolicy } from '../workbenchPolicy'
+import { resolveWorkbenchDefinition } from '../workbench/definitions/registry'
 import { appendWorkbenchField, readWorkbenchField } from '../workbenchFields'
 import type { SpeechTarget } from './speechTargets'
 import { recordFieldSpeechSegment } from './fieldSpeechSegments'
@@ -91,7 +91,7 @@ export function applySpeechWriteback(workspace: SpeechWriteWorkspace, input: Spe
   if (workspace.request.request_id !== input.requestId) throw new Error('The speech request does not match the loaded draft.')
   if (workspace.request.status === 'completed' || workspace.request.status === 'cancelled') throw new Error('This request is closed. The draft is read-only.')
   if (!input.id || typeof input.text !== 'string' || !input.text.trim() || input.text.includes('\0')) throw new Error('Speech contains no valid text.')
-  if (!resolveWorkbenchPolicy(workspace.workbench)) throw new Error('This workbench is not supported. The draft is read-only.')
+  if (!resolveWorkbenchDefinition(workspace.workbench)) throw new Error('This workbench is not supported. The draft is read-only.')
   const destination = input.destination
   if (destination.kind === 'unknown') throw new Error('This speech destination is not supported. Your words have been preserved.')
   if (destination.kind === 'document') return updateFeedbackDraftDocument(

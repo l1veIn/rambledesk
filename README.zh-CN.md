@@ -66,7 +66,7 @@ pnpm dev
 
 运行与检查方式见[开发指南](docs/DEVELOPMENT.md)，使用、接入与架构说明从[文档索引](docs/README.md)进入。
 
-当前源码提供自由反馈、逐项问答、文稿审阅和网页评审工作台，共用语音与附件输入。可用[工作台 Playground](playground/workbenches/README.md) 完整体验 Agent 流程；实现与兼容边界从[工作台文档](docs/workbench/README.md)进入。
+最新源码提供六种正式工作台：自由反馈、逐项问答、文稿审阅、网页评审、终端试用和拖动排序，共用草稿、语音与附件输入及提交链路。类型化工作台框架与本轮专用工作台扩展属于已发布 0.4.0 之后的源码开发，0.4.0 保留其既有 Ramble 自由反馈流程。可从源码运行[工作台 Playground](playground/workbenches/README.md) 完整体验 Agent 流程；实现与兼容边界从[工作台文档](docs/workbench/README.md)进入。
 
 ## 致谢
 

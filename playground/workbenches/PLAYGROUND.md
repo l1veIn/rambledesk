@@ -31,7 +31,7 @@ Bash/sh 使用 "$RAMBLEDESK_COMMAND" feedback ...，保持参数与 JSON 文件�
 node prepare.mjs new
 ~~~
 
-脚本只生成本地文件，不发请求。它生成独立 UUID、将附件路径变成绝对路径，写出 .runs/<run-id>/run.json 和七份请求文件，并更新 latest.json。已有未结束轮会被拒绝；先取得真实终态并更新 run.json。
+脚本只生成本地文件，不发请求。它生成独立 UUID、将附件路径变成绝对路径，按实际 stages 为完整新轮的请求标题生成 `x/N` 编号，写出 .runs/<run-id>/run.json、各阶段请求文件，并更新 latest.json。当前默认有七个场景；新增类型由 fixture 自动发现，不改其他材料里的固定总数。已有未结束轮会被拒绝；先取得真实终态并更新 run.json。恢复时不重新编号已发送请求。
 
 用户明确说“只测试网页评审工作台”时，使用 `node prepare.mjs new web_review`，本轮 stages 只有 `05-web-review.json`。直接进入下方网页服务准备，发送唯一网页请求后做汇总；不把其余工作台记为已测。该模式同样不能绕过未结束旧轮。
 

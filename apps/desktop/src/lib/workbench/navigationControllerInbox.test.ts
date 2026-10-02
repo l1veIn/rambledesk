@@ -1,10 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { get } from 'svelte/store'
 
-import { APPLICATION_READ_TIMEOUT_MS } from '../application/applicationReadTimeout'
-import { TestApplicationTransport } from '../application/testApplicationTransport'
-import type { HostSessionSummary, ListFeedbackRequestsOutput } from '../feedback'
-import type { NavigationState } from './navigationController'
+import type { ListFeedbackRequestsOutput } from '../feedback'
 import {
   createController,
   feedbackRequest,

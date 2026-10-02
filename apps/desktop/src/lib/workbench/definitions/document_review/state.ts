@@ -1,4 +1,4 @@
-import type { ParagraphMark, QuestionAnswer, ReviewAnnotation, TerminalTrialSession, WebReviewAnnotation, WorkbenchState } from '../../../generated/feedback'
+import type { ParagraphMark, ReviewAnnotation, WorkbenchState } from '../../../generated/feedback'
 import { record, text, nullableText, nullableInteger } from '../stateShape'
 
 type DocumentReviewState = Extract<WorkbenchState, { type: 'document_review' }>

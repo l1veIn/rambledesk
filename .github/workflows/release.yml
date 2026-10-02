@@ -39,10 +39,13 @@ jobs:
       - run: pnpm test
       - run: pnpm test:pi
       - run: pnpm test:dsh
+      - run: pnpm test:workbench-tools
+      - run: cargo test -p rambledesk-core -p rambledesk-storage --features workbench-fixtures --locked
       - run: cargo test --workspace --exclude rambledesk-desktop --locked
       - run: cargo test -p rambledesk-desktop --locked --target-dir target/desktop
       - run: pnpm build:web
       - run: pnpm contracts:check
+      - run: pnpm test:workbench-extension
       - run: pnpm mcp:inspector-smoke
       - name: Create the draft release
         env:

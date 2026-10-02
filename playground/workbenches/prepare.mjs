@@ -58,9 +58,10 @@ export function prepare({ command = 'check', mode = 'all', development = false, 
   const runId = `${new Date().toISOString().replace(/[^0-9TZ]/g, '')}-${randomUUID().slice(0, 8)}`
   const directory = join(runs, runId)
   mkdirSync(directory, { recursive: true })
-  const stages = loaded.map(({ file, type, version, input }) => {
+  const stages = loaded.map(({ file, type, version, input }, index) => {
     const requestId = randomUUID()
-    const title = mode === 'all' ? input.title : `${input.title.replace(/^\d+\/\d+\s*·\s*/, '')} · 独立体验`
+    const label = input.title.replace(/^\d+\/\d+\s*·\s*/, '')
+    const title = mode === 'all' ? `${index + 1}/${loaded.length} · ${label}` : `${label} · 独立体验`
     writeJson(join(directory, file), { ...input, title, request_id: requestId })
     return { file, type, version, request_id: requestId, status: 'prepared', observations: [], unverified: [] }
   })

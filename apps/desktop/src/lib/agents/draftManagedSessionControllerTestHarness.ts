@@ -1,4 +1,4 @@
-import { afterEach, vi } from 'vitest'
+import { vi } from 'vitest'
 
 import { TestApplicationTransport } from '$lib/application/testApplicationTransport'
 import type {

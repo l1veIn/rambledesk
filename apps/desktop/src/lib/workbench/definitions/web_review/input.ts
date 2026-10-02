@@ -1,4 +1,4 @@
-import { object, fields, list, text, optionalText, uniqueId, type RecordValue } from '../validation'
+import { object, fields, text, type RecordValue } from '../validation'
 
 export function validWebReviewUrl(value: unknown): value is string {
   if (!text(value, 8192) || /[\s\\\u0000-\u001f\u007f-\u009f]/.test(value) || !/^https?:\/\//i.test(value)) return false

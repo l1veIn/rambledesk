@@ -16,10 +16,6 @@ pub fn workbench_result(
 ) -> Option<WorkbenchResult> {
     validate_workbench(spec).ok()?.result(state)
 }
-pub fn workbench_result_has_input(package: &WorkbenchPackage) -> bool {
-    validate_workbench(&package.input)
-        .is_ok_and(|validated| validated.has_result_input(package.result.as_ref()))
-}
 pub fn workbench_result_complete(package: &WorkbenchPackage) -> bool {
     validate_workbench(&package.input)
         .is_ok_and(|validated| validated.complete(package.result.as_ref()))

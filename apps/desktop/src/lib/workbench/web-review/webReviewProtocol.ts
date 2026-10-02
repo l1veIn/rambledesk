@@ -54,4 +54,4 @@ export function validReviewSelection(value: unknown): value is WebReviewSelectio
     && value.rect.width > 0 && value.rect.height > 0
     && typeof value.captured_at === 'string' && Number.isFinite(Date.parse(value.captured_at))
 }
-import { validWebReviewUrl } from '../../workbenchInputValidation'
+import { validWebReviewUrl } from '../definitions/web_review/input'

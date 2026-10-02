@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
-  APPLICATION_EVENT_PROTOCOL,
   APPLICATION_EVENTS_STREAM,
   REVISION_HEADER,
   RUNTIME_GENERATION_HEADER,
@@ -10,9 +9,7 @@ import {
   HttpApplicationSessionRevokedError,
   HttpApplicationSession,
   HttpApplicationTransport,
-  StaleHttpApplicationLeaseError,
   StaleHttpApplicationResponseError,
-  type ApplicationWebSocket,
 } from './httpApplicationTransport'
 import { APPLICATION_CONFORMANCE_INPUTS } from './applicationTransportConformance'
 import {

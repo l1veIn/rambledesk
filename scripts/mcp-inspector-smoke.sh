@@ -11,6 +11,13 @@ server_pid=""
 cleanup() {
   if [[ -n "$server_pid" ]]; then
     kill -INT "$server_pid" 2>/dev/null || true
+    # Native Windows processes may not receive Git Bash's emulated SIGINT.
+    # Bound shutdown before releasing this test's files and process owner.
+    for _ in {1..30}; do
+      if ! kill -0 "$server_pid" 2>/dev/null; then break; fi
+      sleep 0.1
+    done
+    kill -KILL "$server_pid" 2>/dev/null || true
     wait "$server_pid" 2>/dev/null || true
   fi
   case "$verify_dir" in

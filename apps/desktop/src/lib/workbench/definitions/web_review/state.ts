@@ -1,5 +1,5 @@
-import type { ParagraphMark, QuestionAnswer, ReviewAnnotation, TerminalTrialSession, WebReviewAnnotation, WorkbenchState } from '../../../generated/feedback'
-import { record, text, nullableText, nullableInteger } from '../stateShape'
+import type { WebReviewAnnotation, WorkbenchState } from '../../../generated/feedback'
+import { record, text } from '../stateShape'
 
 type WebReviewState = Extract<WorkbenchState, { type: 'web_review' }>
 

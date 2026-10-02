@@ -13,18 +13,20 @@ const readJson = path => JSON.parse(readFileSync(path, 'utf8'))
 const writeJson = (path, value) => writeFileSync(path, JSON.stringify(value), 'utf8')
 const command = (script, args, cwd = root) => JSON.parse(execFileSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', timeout: 10000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }))
 
-test('prepares six stages or a single workbench and refuses to replace an unfinished run', () => {
+test('prepares the complete playground or a single workbench and refuses to replace an unfinished run', () => {
   const directory = mkdtempSync(join(tmpdir(), 'ramble-playground-'))
   try {
     for (const entry of ['prepare.mjs', 'fixtures', 'materials']) cpSync(join(root, entry), join(directory, entry), { recursive: true })
     const check = command('prepare.mjs', ['check'], directory)
     assert.equal(check.submitted, false)
-    assert.equal(check.fixtures.length, 6)
+    assert.deepEqual(check.fixtures.map(fixture => fixture.type), ['ramble', 'questions', 'questions', 'document_review', 'web_review', 'terminal', 'sort'])
     const prepared = command('prepare.mjs', ['new'], directory)
     const runPath = join(prepared.directory, 'run.json')
     const run = readJson(runPath)
-    assert.deepEqual(run.stages.map(stage => stage.type), ['ramble', 'questions', 'questions', 'document_review', 'web_review', 'terminal'])
-    assert.equal(new Set(run.stages.map(stage => stage.request_id)).size, 6)
+    assert.deepEqual(run.stages.map(stage => stage.type), check.fixtures.map(fixture => fixture.type))
+    assert.equal(new Set(run.stages.map(stage => stage.request_id)).size, check.fixtures.length)
+    assert.equal(readJson(join(prepared.directory, '01-ramble.json')).title, `1/${run.stages.length} · 自由反馈`)
+    assert.equal(readJson(join(prepared.directory, 'sort.json')).title, `${run.stages.length}/${run.stages.length} · 拖动排序`)
     assert.equal(readJson(join(prepared.directory, '06-terminal.json')).workbench.data.cwd, realpathSync(directory))
     assert.throws(() => command('prepare.mjs', ['new', 'web_review'], directory), /Resume/)
     run.status = 'completed'

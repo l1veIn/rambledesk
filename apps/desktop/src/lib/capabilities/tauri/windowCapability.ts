@@ -2,7 +2,6 @@ import { currentDesktopPlatform } from '$lib/platform'
 
 import type { WindowCapability } from '../workbenchCapabilities'
 import { validateWindowZoom } from '../windowZoom'
-import { subscribeToTauriEvent } from './subscription'
 import type { TauriCapabilityApi } from './tauriCapabilityApi'
 
 export function createTauriWindowCapability(api: TauriCapabilityApi): WindowCapability {

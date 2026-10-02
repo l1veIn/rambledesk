@@ -8,14 +8,10 @@ import { createWorkbench } from './workbench-new.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const type = 'extension_probe'
-const tracked = spawnSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
-if (tracked.status !== 0) throw new Error('A Git checkout is required for the extension diff proof')
-const production = tracked.stdout.split('\0').filter((path) => path && /^(?:apps\/desktop\/src\/|crates\/)/.test(path)
+const listed = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' })
+if (listed.status !== 0) throw new Error('A Git checkout is required for the extension diff proof')
+const production = [...new Set(listed.stdout.split('\0'))].filter((path) => path && existsSync(resolve(root, path)) && /^(?:apps\/desktop\/src\/|crates\/)/.test(path)
   && /\.(?:rs|ts|svelte)$/.test(path) && !/(?:\.test\.|\/tests\/)/.test(path))
-// During the framework's first implementation the registration files can still be untracked.
-for (const path of ['crates/rambledesk-core/src/workbenches/registry.rs', 'apps/desktop/src/lib/workbench/definitions/registry.ts']) {
-  if (!production.includes(path)) production.push(path)
-}
 const digest = (path) => createHash('sha256').update(readFileSync(resolve(root, path), 'utf8').replaceAll('\r\n', '\n')).digest('hex')
 const before = new Map(production.map((path) => [path, digest(path)]))
 const restoreFiles = ['crates/rambledesk-core/src/workbenches/registry.rs', 'apps/desktop/src/lib/workbench/definitions/registry.ts',
@@ -40,7 +36,7 @@ let created
 let proof
 try {
   created = createWorkbench({ type })
-  run('cargo', ['fmt', '--all'])
+  run('rustfmt', ['--edition', '2024', 'crates/rambledesk-core/src/workbenches/registry.rs', `crates/rambledesk-core/src/workbenches/${type}.rs`])
   run('cargo', ['test', '-p', 'rambledesk-core', '--features', 'workbench-fixtures', type])
   run('pnpm', ['contracts:generate'])
   run('pnpm', ['check'])

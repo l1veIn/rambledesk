@@ -175,7 +175,7 @@ fn describe() -> Result<WorkbenchDescription, ApplicationError> {
 pub(super) fn validate(data: &TerminalData) -> Result<(), ApplicationError> {
     if !super::terminal::terminal_input_valid(data) {
         return Err(ApplicationError::invalid_argument(
-            "terminal requires cwd, optional shell and 1–20 uniquely identified, single-line suggested commands with visible title and command",
+            "terminal requires cwd, optional shell and at most 20 uniquely identified suggested commands with visible titles and single-line commands",
         ));
     }
     Ok(())

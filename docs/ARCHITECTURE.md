@@ -21,7 +21,7 @@ Desktop / Browser Capability → 当前客户端 Platform Plugin
 
 `apps/desktop` 是完整产品的 composition root。每个 desktop 进程创建一份 Backend Runtime/application facade，由 Tauri state、该进程的 Local Integration Server 和可选 Web Access 共用；不是跨进程全局单例。
 
-Local Integration Server 的独立 loopback listener 承载 `/api`、`/mcp`、托管会话专用 `/agent-feedback/*`，并保留旧 `/mcp-managed` 兼容入口。它不提供 Web 静态资源、Workbench application routes 或 WebSocket；MCP SSE 不是 Web Client 事件流。
+Local Integration Server 的独立 loopback listener 承载 `/api`、`/mcp`、托管会话专用 `/agent-feedback/*`，并保留旧 `/mcp-managed` 兼容入口。它还公开无凭证、无反馈数据的 `/web-review/bridge.js` 静态桥接脚本，供待评审项目自行托管；不提供 Workbench 应用静态资源、application routes 或 WebSocket。MCP SSE 不是 Web Client 事件流。
 
 Web Access 默认关闭，使用另一 listener、credential、auth domain、route set 和启停生命周期；默认 `127.0.0.1:37643`。它复用同一 application module，停止它不停止 Backend Runtime 或 Local Integration Server。设置支持下次启动使用的新端口及可选随 Desktop 启动，均不改变 loopback 边界。
 
@@ -97,7 +97,7 @@ Web Transport 保留以下顺序与失效合同：
 | `lib/workbench` | 问答导航、批注生命周期等业务交互；组合输入、保存与提交准备。 |
 | `lib/backgroundDraftWriter.ts` | 所有后台草稿变换共用一个 revision/CAS 重试循环；冲突时重新读取完整草稿再应用。 |
 
-`WorkbenchTextField` 通过 `TiptapInput` 编辑字段的普通文本投影，并组合工具栏、附件引用、字数限制、焦点选择与行内语音来源标识。字段的选区与撤销历史限于当前目标，切换或隐藏字段不会让后台写入依赖 Editor。类型 definition 提供草稿解码、完成条件和字段适配器；`workbenchStateDecoders.ts`、`workbenchPolicy.ts` 只委派，不逐类型维护业务。通用 `workbench_field` 目标包含类型、版本、字段、业务对象与来源版本；旧问题和批注目标继续按原合同解释。后端独立验证完成条件。
+`WorkbenchTextField` 通过 `TiptapInput` 编辑字段的普通文本投影，并组合工具栏、附件引用、字数限制、焦点选择与行内语音来源标识。字段的选区与撤销历史限于当前目标，切换或隐藏字段不会让后台写入依赖 Editor。类型 definition 提供输入验证、草稿解码、完成条件和字段适配器，`definitions/registry.ts` 统一解析定义与能力；共享调用者不逐类型维护业务。通用 `workbench_field` 目标包含类型、版本、字段、业务对象与来源版本；旧问题和批注目标继续按原合同解释。后端独立验证完成条件。
 
 | 允许的跨模块依赖 | 具体用途与限制 |
 | --- | --- |
@@ -108,22 +108,23 @@ Web Transport 保留以下顺序与失效合同：
 | `lib/input → lib/(root)` | 使用已有合同、附件 URL、字段附件展示辅助及 i18n/preferences，不调用后台保存控制器。 |
 | `lib/(root) → lib/domain` | 纯草稿变换共享目标身份；根目录代码不依赖输入 UI。 |
 | `lib/preview → lib/workbench` | 预览 transport 读取纯 definition 示例元数据，视图仍通过懒加载回调加载。 |
+| `lib/speech → lib/workbench/definitions/registry` | 写回与整理检查当前类型是否可编辑；只读取无 UI 的类型注册与规则，不导入业务视图，也不建立反向语音依赖。 |
 
 这些方向及逐条理由由 `architecture/frontendBoundaries.test.ts` 固定。`lib/speech` 不反向依赖输入工具栏；普通输入的领域校验不依赖语音队列、来源信息或整理状态。
 
 ## 第一方工作台组合
 
-工作台专用区域与通用反馈列是同一个请求的两个输入区域。Ramble、逐项问答与文稿审阅各自提供独立视图；单项方案选择使用一道关闭自定义回答的问答题，旧 `single_choice` 通过薄兼容层复用同一问答视图并保留旧保存/结果合同。共享容器负责布局、加载、锁定、反馈列和提交协调；类型视图负责自身业务对象与交互，不直接调用 Application Transport、设备采集或发布入口。
+工作台专用区域与通用反馈列是同一个请求的两个输入区域。六种正式类型各自提供独立视图，当前目录见[协议](PROTOCOL.md#工作台发现与类型合同)；单项方案选择使用一道关闭自定义回答的问答题，旧 `single_choice` 通过薄兼容层复用同一问答视图并保留旧保存/结果合同。共享容器负责布局、加载、锁定、反馈列和提交协调；类型视图负责自身业务对象与交互，不直接调用 Application Transport、设备采集或发布入口。
 
 Backend Runtime 的类型目录提供发现、schema、输入验证和结果解释；客户端静态注册项选择相应视图与状态规则。它们共享稳定的 `type/version` 合同，分属服务端领域规则与客户端呈现职责。注册表随应用构建，不是动态插件框架；目录 `interaction` 字符串只描述交互分类，不参与宿主协议或权限。
 
 Rust 的 `workbenches/registry.rs` 是唯一类型声明入口，由静态宏生成模块组合、Kind/Data/State/Result、解码和 DTO 导出清单。每个业务模块拥有发现元数据、schema/example、输入与草稿校验、结果投影、完成条件及可选运行校验。存储只负责 envelope 编解码与 CAS，再调用领域定义；新增普通类型不修改数据库或传输分发。
 
-前端的 `lib/workbench/definitions/registry.ts` 是唯一注册入口；各 definition 拥有输入识别、状态解码、完成条件、布局、字段适配器、可选控制器和示例。`RegisteredWorkbench.svelte` 按 definition 懒加载视图并注入 `WorkbenchViewContext`：公共 `WorkspaceHeader` 与 `RequestContextPanel` 固定在业务滚动区域上方，后者将 `request.what_happened` 呈现为「情况说明」，并组合请求材料标签。说明与附件共用限高滚动区域，无附件时不占位。业务视图通过 host 更新状态、引用正文和打开全屏，不持有保存队列或 publication state。
+前端的 `lib/workbench/definitions/registry.ts` 是唯一注册入口；各 definition 拥有输入识别、状态解码、完成条件、布局、字段适配器、可选控制器和示例。`RegisteredWorkbench.svelte` 按 definition 懒加载视图并注入 `WorkbenchViewContext`：公共 `WorkspaceHeader` 与 `RequestContextPanel` 固定在业务滚动区域上方，后者将 `request.what_happened` 呈现为「情况说明」，并组合请求材料标签。说明与附件共用限高滚动区域，无附件时不占位。业务视图通过 host 更新状态与引用正文，不持有保存队列或 publication state。全屏按 `layout.expanded` 主动开启，普通模板与排序默认关闭；开启后宿主提供 `openExpanded`，同一请求的普通/全屏页签共用草稿与运行状态，左侧会话导航保持可用。
 
 `workbenchLifecycle.ts` 按请求持有可选 controller，统一工作台、任务页签和原生控制台的提交准备；视图只 attach/detach。终端控制器处理已接受按键排空、实际停止、最终输出和多轮记录合并，卸载视图不停止后端 PTY。发布前，后端类型的 `pre_publish` 校验真实请求所属资源状态，终端创建与发布共享生命周期锁，避免检查后又开启会话；客户端的 stopped 草稿不是运行完成的证明。可保存草稿和可发布结果有各自规则。
 
-普通新增体验由 `pnpm workbench:new` 生成三份业务代码与用例，仅修改两份注册文件；示例和 playground 按统一约定发现。详见[新增教程](workbench/adding-a-workbench.md)及[验收记录](workbench/framework-validation.md)。测试类型 `rating_review` 只在 Rust 的 `workbench-fixtures` 与前端开发开关下注册，生产类型目录保持原范围。
+普通新增体验由 `pnpm workbench:new` 生成三份业务代码与用例，仅修改两份注册文件；示例和 playground 按统一约定发现。详见[新增教程](workbench/adding-a-workbench.md)及[验收记录](workbench/framework-validation.md)。测试类型 `rating_review` 只在 Rust 的 `workbench-fixtures` 与前端开发开关下注册，默认生产类型目录不包含它。
 
 持久草稿的 JSON envelope 由 `crates/rambledesk-storage/src/workbench_result.rs` 解码；repository 在同一事务快照中取出正文与交互状态，再调用 `core/workbenches/draft.rs` 的纯提交策略。core 接收已解析的类型化交互状态与正文投影，不读取 `document_json`、解释 TipTap JSON 或拥有存储 codec；Backend Runtime 对整个 Draft 的业务所有权不因编解码所在模块而改变。
 
@@ -174,7 +175,7 @@ Submit(request_id, expected_revision)
 
 每条用户/续接 prompt 前置工作流上下文，但用户 Activity 不保存注入说明。Agent 工具和 bridge 环境传播仍须实测。托管提交/批准与 outbox 入队原子提交，worker 仅在原会话可接收输入时续接；取消不创建新投递。旧取消投递保留历史并停止派发。delivered 不表示任务完成，uncertain 不自动重试，只由人类显式处理。
 
-Agent 会话标题栏的「内置会话指令」只读展示 `SessionRuntime.builtin_instructions`。该字段在连接成功时从 driver 取得，与 ACP 实际发送的工作流上下文共用同一源文本，不由前端重新拼装。停止连接后保留最近连接的文本并标明其范围；新应用实例和不提供该能力的连接可以省略该字段，不据此推断历史回合使用过哪些规则。查看或复制指令不产生用户 Activity，也不发送 prompt。工作台选型由 Agent 依据本次需要的人类输入决定：具体文稿的逐段审阅使用 `document_review`，必要问题和决策使用 `questions`，开放反馈使用 `ramble`；混合任务先处理阻塞下一步的输入。
+Agent 会话标题栏的「内置会话指令」只读展示 `SessionRuntime.builtin_instructions`。该字段在连接成功时从 driver 取得，与 ACP 实际发送的工作流上下文共用同一源文本，不由前端重新拼装。停止连接后保留最近连接的文本并标明其范围；新应用实例和不提供该能力的连接可以省略该字段，不据此推断历史回合使用过哪些规则。查看或复制指令不产生用户 Activity，也不发送 prompt。工作台选型由 Agent 依据本次需要的人类输入决定，具体用途与接入条件见[工作台目录](PROTOCOL.md#工作台发现与类型合同)；混合任务先处理阻塞下一步的输入。
 
 ## 数据布局
 
@@ -199,7 +200,7 @@ Agent 会话标题栏的「内置会话指令」只读展示 `SessionRuntime.bui
 
 ### Local Integration Server
 
-只绑定 loopback，使用持久 256-bit hex bearer、constant-time 比较和 Host/Origin guard。Host 只允许 `127.0.0.1` / `localhost`；无 Origin 只按非浏览器本机调用放行，有 Origin 必须 exact-match allowlist。通用 body limit 为 96 MiB。Unix token 文件 `0600`，非 Unix 不宣称等价 ACL；不能把它直接复用为 Web credential。关联字段和 context hint 均不承担认证。
+反馈 API 只绑定 loopback，使用持久 256-bit hex bearer、constant-time 比较和 Host/Origin guard。Host 只允许 `127.0.0.1` / `localhost`；无 Origin 只按非浏览器本机调用放行，有 Origin 必须 exact-match allowlist。`/web-review/bridge.js` 只公开固定静态代码并校验 listener Host，不携带凭证或反馈数据，不放宽反馈 API 认证。通用 body limit 为 96 MiB。Unix token 文件 `0600`，非 Unix 不宣称等价 ACL；不能把它直接复用为 Web credential。关联字段和 context hint 均不承担认证。
 
 ### Web Access
 

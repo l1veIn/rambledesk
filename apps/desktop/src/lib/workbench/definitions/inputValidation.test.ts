@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { WorkbenchSpec } from './generated/feedback'
-import { resolveWorkbenchPolicy, workbenchIsReadOnly, workbenchSupportsApproval } from './workbenchPolicy'
-import { canSubmitWorkbench } from './workbenchState'
-import { validTerminalInput } from './workbenchInputValidation'
+import type { WorkbenchSpec } from '../../generated/feedback'
+import { resolveWorkbenchDefinition, workbenchIsReadOnly, workbenchSupportsApproval } from './registry'
+import { canSubmitWorkbench } from '../../workbenchState'
+import { validTerminalInput } from './terminal/input'
 
 const action = { id: 'read', instruction: 'Read the result' }
 const choice = { id: 'yes', label: 'Yes' }
@@ -18,7 +18,7 @@ const inputs = {
 const spec = (type: keyof typeof inputs, data: object = inputs[type]): WorkbenchSpec => ({ type, version: 1, data: data as Record<string, unknown> })
 function rejected(type: keyof typeof inputs, data: object) {
   const input = spec(type, data)
-  expect(resolveWorkbenchPolicy(input)).toBeNull()
+  expect(resolveWorkbenchDefinition(input)).toBeNull()
   expect(workbenchIsReadOnly(input)).toBe(true)
   expect(workbenchSupportsApproval(input)).toBe(false)
   expect(canSubmitWorkbench(input, null, 'Even saved notes cannot make an opaque input editable')).toBe(false)
@@ -29,14 +29,14 @@ describe('workbench input contract before enabling mutations', () => {
     for (const data of [{ cwd: '/project' }, { cwd: '/project', commands: [] },
       { cwd: '/project', commands: [{ id: 'help', title: 'Help', command: 'my-cli --help' }] }]) {
       expect(validTerminalInput(data)).toBe(true)
-      expect(resolveWorkbenchPolicy({ type: 'terminal', version: 1, data })?.type).toBe('terminal')
+      expect(resolveWorkbenchDefinition({ type: 'terminal', version: 1, data })?.type).toBe('terminal')
     }
     for (const commands of [null, 'my-cli --help', [{ id: 'help', title: 'Help', command: 'my-cli --help\n' }]]) {
       expect(validTerminalInput({ cwd: '/project', commands })).toBe(false)
     }
   })
   it.each(Object.keys(inputs) as Array<keyof typeof inputs>)('accepts valid %s input but preserves extra data fields as read-only', (type) => {
-    expect(resolveWorkbenchPolicy(spec(type))?.type).toBe(type)
+    expect(resolveWorkbenchDefinition(spec(type))?.type).toBe(type)
     rejected(type, { ...inputs[type], future: true })
   })
 
@@ -72,10 +72,10 @@ describe('workbench input contract before enabling mutations', () => {
       ['document_review', (value: string) => ({ ...inputs.document_review, title: value }), 200],
     ] as const
     for (const [type, data, max] of fields) {
-      expect(resolveWorkbenchPolicy(spec(type, data('😀'.repeat(max))))?.type).toBe(type)
+      expect(resolveWorkbenchDefinition(spec(type, data('😀'.repeat(max))))?.type).toBe(type)
       for (const value of ['', ' \n\t', '\u0085', 'text\0', '😀'.repeat(max + 1), '\uD800']) rejected(type, data(value))
       // BOM is not Unicode White_Space and Rust treats it as visible.
-      expect(resolveWorkbenchPolicy(spec(type, data('\uFEFF')))?.type).toBe(type)
+      expect(resolveWorkbenchDefinition(spec(type, data('\uFEFF')))?.type).toBe(type)
     }
   })
 
@@ -84,7 +84,7 @@ describe('workbench input contract before enabling mutations', () => {
     for (const allowOther of [null, 'true', 1]) rejected('questions', withQuestion({ ...question, allowOther }))
     for (const label of [42, 'x'.repeat(41), '\0']) rejected('questions', withQuestion({ ...question, label }))
     for (const label of [undefined, null, '', ' '.repeat(40)]) {
-      expect(resolveWorkbenchPolicy(spec('questions', withQuestion({ ...question, label, allowOther: undefined })))).not.toBeNull()
+      expect(resolveWorkbenchDefinition(spec('questions', withQuestion({ ...question, label, allowOther: undefined })))).not.toBeNull()
     }
     for (const options of [[option], Array.from({ length: 7 }, (_, index) => ({ ...option, value: String(index) })), [option, option]]) {
       rejected('questions', withQuestion({ ...question, options }))
@@ -93,7 +93,7 @@ describe('workbench input contract before enabling mutations', () => {
       { description: 42 }, { description: 'x'.repeat(2001) }, { description: '\0' }]) {
       rejected('questions', withQuestion({ ...question, options: [{ ...option, ...invalid }, question.options[1]] }))
     }
-    expect(resolveWorkbenchPolicy(spec('questions', withQuestion({ ...question, options: [
+    expect(resolveWorkbenchDefinition(spec('questions', withQuestion({ ...question, options: [
       { value: 'Any visible value 😀', label: 'Label', description: null }, { value: 'second', label: 'Two', description: '' },
     ] })))).not.toBeNull()
   })
@@ -105,7 +105,7 @@ describe('workbench input contract before enabling mutations', () => {
       rejected('document_review', { ...inputs.document_review, paragraphs: [{ ...paragraph, ...invalid }] })
     }
     const paragraphs = Array.from({ length: 15 }, (_, index) => ({ id: `p-${index}`, text: '😀'.repeat(8000), label: null }))
-    expect(resolveWorkbenchPolicy(spec('document_review', { ...inputs.document_review, paragraphs }))).not.toBeNull()
+    expect(resolveWorkbenchDefinition(spec('document_review', { ...inputs.document_review, paragraphs }))).not.toBeNull()
     rejected('document_review', { ...inputs.document_review, paragraphs: [...paragraphs, { id: 'overflow', text: 'x' }] })
   })
 

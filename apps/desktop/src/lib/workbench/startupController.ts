@@ -1,6 +1,6 @@
 import { get, writable } from 'svelte/store'
 
-import { ApplicationReadTimeoutError, withApplicationReadTimeout } from '../application/applicationReadTimeout'
+import { ApplicationReadTimeoutError } from '../application/applicationReadTimeout'
 import { readApplicationSnapshot } from '../application/readApplicationSnapshot'
 import type { ApplicationTransport } from '../application/applicationTransport'
 import { startClientDiagnostic, diagnosticErrorCategory } from '../diagnostics/clientDiagnostics'

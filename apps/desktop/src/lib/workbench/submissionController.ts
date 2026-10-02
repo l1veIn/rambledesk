@@ -5,7 +5,7 @@ import type { FeedbackPreparation } from '../speech/rambleSessionControllerHandl
 import type { PublishedFeedbackAction } from '../publishedFeedbackAction'
 import type { DraftSession } from './draftSession'
 import type { WorkspaceSession } from './workspaceSession'
-import { workbenchIsReadOnly, workbenchSupportsApproval } from '../workbenchPolicy'
+import { workbenchIsReadOnly, workbenchSupportsApproval } from './definitions/registry'
 
 /**
  * Terminal mutations for the open request: approve, cancel and open the package.

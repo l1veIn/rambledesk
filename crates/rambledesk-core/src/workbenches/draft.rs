@@ -20,15 +20,9 @@ pub fn workbench_package(
     submitted: bool,
 ) -> WorkbenchPackage {
     let result = if submitted {
-        match draft {
-            Some(draft) => workbench_result(spec, draft.workbench_state.as_ref()),
-            None if validate_workbench(spec)
-                .is_ok_and(|validated| validated.kind().definition().notes_only) =>
-            {
-                workbench_result(spec, None)
-            }
-            None => None,
-        }
+        validate_workbench(spec)
+            .ok()
+            .and_then(|validated| draft_result(&validated, draft))
     } else {
         None
     };
@@ -36,6 +30,16 @@ pub fn workbench_package(
         input: spec.clone(),
         result,
     }
+}
+
+fn draft_result(
+    validated: &ValidatedWorkbench<'_>,
+    draft: Option<&FeedbackDraft>,
+) -> Option<WorkbenchResult> {
+    if draft.is_none() && !validated.kind().definition().notes_only {
+        return None;
+    }
+    validated.result(draft.and_then(|draft| draft.workbench_state.as_ref()))
 }
 
 /// Pure submission policy, invoked by the repository on its transaction's
@@ -53,13 +57,19 @@ pub fn prepare_feedback_submission(
         };
     };
     let validated = validate_workbench(spec).map_err(|_| WorkbenchSubmissionError::Unsupported)?;
-    let package = workbench_package(spec, draft, true);
+    let result = draft_result(&validated, draft);
     let review_input = validated.has_input(draft.and_then(|draft| draft.workbench_state.as_ref()));
-    if body_markdown.trim().is_empty() && !workbench_result_has_input(&package) && !review_input {
+    if body_markdown.trim().is_empty()
+        && !validated.has_result_input(result.as_ref())
+        && !review_input
+    {
         return Err(WorkbenchSubmissionError::Empty);
     }
-    if validated.kind().definition().require_complete && !workbench_result_complete(&package) {
+    if validated.kind().definition().require_complete && !validated.complete(result.as_ref()) {
         return Err(WorkbenchSubmissionError::Incomplete);
     }
-    Ok(Some(package))
+    Ok(Some(WorkbenchPackage {
+        input: spec.clone(),
+        result,
+    }))
 }

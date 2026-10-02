@@ -54,7 +54,7 @@ pnpm dev
 
 `?preview=fixtures` 在 `main.ts` 构造 [previewApplicationTransport](../apps/desktop/src/lib/preview/previewApplicationTransport.ts)，经 `createWorkbenchComposition({ previewTransport })` 注入；控制器仍只依赖 Application Transport。预览 workspace snapshot 通过 `createWorkspaceShellSession({ snapshots })` 注入，不写真实 `rambledesk.ui-state`。完整 HTTP/SQLite 夹具与内存预览的证据范围不同。
 
-工作台组件的独立预览入口见 [dev/README](../apps/desktop/src/dev/README.md)。需要通过真实 Agent 完整体验自由反馈、逐项问答和文稿审阅时，打开 [Playground](../playground/workbenches/README.md) 的目录并使用其中的提示词；该流程与浏览器内存预览分别验证。
+工作台组件的独立预览入口见 [dev/README](../apps/desktop/src/dev/README.md)。需要通过真实 Agent 体验六种正式工作台时，打开 [Playground](../playground/workbenches/README.md) 的目录并使用其中的提示词；七个场景另含单题问答，该流程与浏览器内存预览分别验证。新增普通类型的两个注册入口、脚手架与全屏选配见[新增教程](workbench/adding-a-workbench.md)。
 
 ## 前后端合同
 
@@ -86,15 +86,18 @@ pnpm check:rust-size
 pnpm check:frontend-size
 pnpm test:pi
 pnpm test:dsh
+pnpm test:workbench-tools
+cargo test -p rambledesk-core -p rambledesk-storage --features workbench-fixtures --locked
+pnpm test:workbench-extension
 pnpm mcp:self-test
 pnpm mcp:inspector-smoke
 ```
 
-`test:rust` 包含独立 `target/desktop` 的桌面测试；`build:web` 是工作台构建。官网修改另运行 `pnpm -C web check` 与 `pnpm -C web build`。涉及打包、平台行为或真实输入时，在相应平台记录构建标识、步骤、实际结果和未验项；本机测试不等于远端 CI 或其他平台通过。
+`test:rust` 包含独立 `target/desktop` 的桌面测试；`build:web` 是工作台构建。`test:workbench-tools` 检查脚手架、playground 准备及网页样例服务；开发 feature 测试验证评分演练的真实领域/存储闭环。`test:workbench-extension` 临时修改注册与生成合同，再恢复源码，必须在合同检查后单独运行，不与源码修改、合同生成或构建并发。CI 三个平台运行工具和开发 feature 测试，Linux CI 与发布门禁再运行扩展演练。官网修改另运行 `pnpm -C web check` 与 `pnpm -C web build`。涉及打包、平台行为或真实输入时，在相应平台记录构建标识、步骤、实际结果和未验项；本机测试不等于远端 CI 或其他平台通过。
 
 ## 发布与更新说明
 
-- 发布前在 [CHANGELOG.md](CHANGELOG.md) 顶部增加 `## vX.Y.Z` 条目。保持纯文本、英文在前中文摘要在后，更新弹窗不解析 Markdown。
+- 开发期间将变化写入 [CHANGELOG.md](CHANGELOG.md) 的 `Unreleased`；确定发布版本后整理为 `## vX.Y.Z` 条目，保留已发布历史。保持纯文本、英文在前中文摘要在后，更新弹窗不解析 Markdown。
 - `release.yml` 的 checksums 阶段将条目写入 GitHub Release 正文与 `latest.json` 的 `notes`；缺少条目会警告并回退到通用说明。
 - 手动生成：`node scripts/release-notes.mjs --tag vX.Y.Z`。
 - 修正已发布说明时，同步更新 CHANGELOG、Release 正文和 updater metadata，使用 `scripts/release-notes.mjs` 与 `scripts/patch-updater-notes.mjs`，避免两处不一致。

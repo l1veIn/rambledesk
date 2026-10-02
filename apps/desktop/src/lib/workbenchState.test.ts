@@ -6,7 +6,7 @@ import { canSubmitWorkbench, readWorkbenchState, withWorkbenchState, workbenchSu
 import { writeBackgroundDraftOperation } from './backgroundDraftWriter'
 import { workbenchExamples, workbenchPreviewWorkspace } from '../dev/workbenchPreviewFixtures'
 import type { QuestionsData, WorkbenchState } from './generated/feedback'
-import { resolveWorkbenchPolicy } from './workbenchPolicy'
+import { resolveWorkbenchDefinition } from './workbench/definitions/registry'
 
 const choice = (value: string) => ({ type: 'questions' as const, answers: [{ id: 'layout', value, label: value, wasCustom: false }] })
 const state = choice('compact')
@@ -44,7 +44,7 @@ describe('workbench submission rules', () => {
       { ...workbenchExamples[2], type: 'future_workbench' },
       { ...workbenchExamples[2], data: { options: null } },
     ]) {
-      expect(resolveWorkbenchPolicy(spec)).toBeNull()
+      expect(resolveWorkbenchDefinition(spec)).toBeNull()
       expect(workbenchSubmissionIssue(spec, state, 'Notes')).toBe('unsupported')
     }
   })

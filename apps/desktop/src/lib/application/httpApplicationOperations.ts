@@ -1,10 +1,5 @@
 import type { ApplicationCommandInput, ApplicationCommandName } from './contracts'
-import { isApplicationError } from './contracts'
 import type { ApplicationResourceKey } from '../generated/feedback'
-import {
-  isRuntimeGenerationStaleError,
-  isSnapshotUnstableError,
-} from './applicationEvents'
 
 type CatalogInput = { agent_id: string }
 

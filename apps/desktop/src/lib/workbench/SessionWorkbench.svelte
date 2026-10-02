@@ -1,5 +1,5 @@
 <!--
-  Ramble session view: a registered workbench (here: Ramble) inside the common
+  Session view: a registered workbench inside the common
   workbench container. This file only wires the App's props to those two pieces;
   the layout, the feedback column and the submission flow live in the container.
 -->
@@ -38,7 +38,6 @@
   import type { WorkbenchState } from '../generated/feedback'
   import { readWorkbenchState, withWorkbenchState } from '../workbenchState'
   import { applyFeedbackDraftSnapshot, snapshotFeedbackDraftDocument } from '../feedbackDraftDocument'
-  import { workbenchIsReadOnly } from '../workbenchPolicy'
   import WorkbenchContainer from './WorkbenchContainer.svelte'
   import { resolveWorkbenchDefinition } from './definitions/registry'
   import type { WorkbenchController } from './definitions/contracts'
@@ -111,7 +110,7 @@
   export let onCancel: () => void = () => {}
   export let onApprove: () => void = () => {}
 
-  $: unsupported = workbenchIsReadOnly(workspace?.workbench)
+  $: unsupported = definition === null
   $: feedbackReadOnly = readOnly || unsupported
   $: interactionLocked = feedbackReadOnly || cooking || cookedDraftReady || submitting || cancelling || approving
 

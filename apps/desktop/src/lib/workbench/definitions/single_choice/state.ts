@@ -1,5 +1,5 @@
-import type { ParagraphMark, QuestionAnswer, ReviewAnnotation, TerminalTrialSession, WebReviewAnnotation, WorkbenchState } from '../../../generated/feedback'
-import { record, text, nullableText, nullableInteger } from '../stateShape'
+import type { WorkbenchState } from '../../../generated/feedback'
+import { record, nullableText } from '../stateShape'
 
 type SingleChoiceState = Extract<WorkbenchState, { type: 'single_choice' }>
 

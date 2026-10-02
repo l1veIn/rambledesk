@@ -1,5 +1,5 @@
-import type { ParagraphMark, QuestionAnswer, ReviewAnnotation, TerminalTrialSession, WebReviewAnnotation, WorkbenchState } from '../../../generated/feedback'
-import { record, text, nullableText, nullableInteger } from '../stateShape'
+import type { QuestionAnswer, WorkbenchState } from '../../../generated/feedback'
+import { record, text } from '../stateShape'
 
 type QuestionsState = Extract<WorkbenchState, { type: 'questions' }>
 

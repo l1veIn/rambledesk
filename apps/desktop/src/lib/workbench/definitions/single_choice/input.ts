@@ -1,4 +1,4 @@
-import { object, fields, list, text, optionalText, uniqueId, type RecordValue } from '../validation'
+import { object, fields, list, text, uniqueId, type RecordValue } from '../validation'
 
 export function validSingleChoiceInput(data: RecordValue): boolean {
   const ids = new Set<string>()

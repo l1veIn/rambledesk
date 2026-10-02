@@ -4,7 +4,6 @@ import { defineApplicationStream } from './applicationTransport'
 import type { ApplicationCommandInput, ApplicationCommandName } from './contracts'
 import {
   APPLICATION_EVENT_PROTOCOL,
-  APPLICATION_EVENTS_STREAM,
   REVISION_HEADER,
   RUNTIME_GENERATION_HEADER,
 } from './applicationEvents'

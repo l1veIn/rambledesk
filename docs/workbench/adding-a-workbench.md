@@ -16,9 +16,11 @@ pnpm check
 
 名称使用唯一的 `snake_case`，每段以字母开头。脚手架拒绝已有文件、已注册名称、目录路径和保留字。`--dry-run` 显示将创建和修改的文件，不写入。
 
-模板是一套可工作的“1 至 5 分＋可选意见”业务。开发者随后在自己的模块内改成实际需求。它创建以下六个文件：
+模板是一套可工作的“1 至 5 分＋可选意见”业务。开发者随后在自己的模块内改成实际需求。
 
 正式的 `sort` 工作台也是从这份脚手架生成的：Rust 定义条目与完整排列，前端 definition 负责校验，视图复用已有拖动组件；它没有新增宿主、字段、传输或保存分支。可以参考 `crates/rambledesk-core/src/workbenches/sort.rs` 和 `apps/desktop/src/lib/workbench/definitions/sort/`，体验材料位于 `playground/workbenches/materials/sort.md`。
+
+脚手架创建以下六个文件：
 
 | 位置 | 用途 |
 | --- | --- |

@@ -11,7 +11,7 @@
   import { locale } from '../preferences'
   import DeliveryCard from './DeliveryCard.svelte'
   import FeedbackEditorPanel from './FeedbackEditorPanel.svelte'
-  import { workbenchSupportsApproval } from '../workbenchPolicy'
+  import { workbenchSupportsApproval } from './definitions/registry'
 
   export let workspace: FeedbackWorkspaceView
   export let draftBody = ''

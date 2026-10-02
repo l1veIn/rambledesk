@@ -1,4 +1,4 @@
-import type { FeedbackRequestSummary, ListFeedbackRequestsInput } from '../../feedback'
+import type { ListFeedbackRequestsInput } from '../../feedback'
 import { requestFilterStatuses } from '../../domain/requestFilters'
 import type { NavigationState } from './navigationTypes'
 

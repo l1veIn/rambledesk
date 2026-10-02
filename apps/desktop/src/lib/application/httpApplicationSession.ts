@@ -20,7 +20,6 @@ import {
   MUTATION_COMMANDS,
   isAuthenticationRejection,
   parseRevision,
-  projectionKey,
   type HttpApplicationOperation,
 } from './httpApplicationOperations'
 
