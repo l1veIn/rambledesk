@@ -27,7 +27,7 @@ vi.mock('./lib/workbench/terminal/xtermAdapter', () => ({
     let screen = ''
     return { reset: () => { screen = '' }, write: async (text: string) => { screen += text; surface.textContent = screen },
       screen: () => screen, size: () => ({ cols: 80, rows: 24 }), fit() {}, focus() {},
-      paste: (text: string) => terminal.onData?.(text), setInteractive() {},
+      paste: (text: string) => terminal.onData?.(text), setInteractive() {}, setAppearance() {},
       dispose: () => { terminal.dispose(); surface.remove() } }
   },
 }))

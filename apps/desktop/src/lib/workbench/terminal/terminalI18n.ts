@@ -12,6 +12,10 @@ const zh: Record<string, string> = {
   'Saved terminal screen': '保存的终端画面', 'Terminal transcript': '终端输出记录',
   'No trial recorded yet.': '还没有试用记录。', 'Terminal unavailable': '终端暂时不可用',
   'Retry connection': '重试连接', 'Exit code': '退出码',
+  'Style': '样式', 'Terminal style': '终端样式', 'Terminal color presets': '终端配色预设',
+  'Midnight': '午夜', 'Paper': '纸白', 'Amber': '暖砂', 'Forest': '松绿', 'Ready to try': '准备就绪',
+  'Choose a look for your terminal.': '选择你喜欢的终端配色。', 'Colors apply immediately.': '配色立即生效。',
+  'Style applied. Could not save your preference.': '样式已生效，但未能保存偏好。',
   'The terminal session was lost. Saved output is preserved; you can submit it with your feedback.': '终端会话已丢失，保存的输出仍保留，可以随反馈一起提交。',
 }
 export function terminalText(locale: string, source: string): string { return locale === 'zh-CN' ? zh[source] ?? t('zh-CN', source) : source }

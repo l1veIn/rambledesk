@@ -52,6 +52,8 @@
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let headerActions: Snippet | undefined = undefined
+  /** Without an Agent status row, the document heading is the column header. */
+  export let columnHeader = false
   export let attachmentCount = 0
   export let attachmentBusy = false
   export let onRemoveAttachment: (attachment: AttachmentView) => void = () => {}
@@ -121,46 +123,51 @@
 <section
   bind:this={root}
   class={[
-    'flex h-full min-h-0 flex-1 flex-col p-5 transition-colors',
+    'flex h-full min-h-0 min-w-0 flex-1 flex-col transition-colors',
+    columnHeader ? 'px-5 pb-5' : 'p-5',
     dragActive ? 'bg-primary/5 ring-2 ring-inset ring-primary/30' : '',
   ]}
 >
-  <header class="mb-3 flex flex-wrap items-center gap-2">
-    <h2 class="m-0 min-w-24 flex-1 truncate text-xs font-medium"
+  <header class={columnHeader
+    ? 'workbench-column-header -mx-5 mb-3 flex flex-col justify-center gap-1 border-b px-5'
+    : 'mb-3 flex flex-wrap items-center gap-2'} data-feedback-document-header>
+    <h2 class={['m-0 truncate text-xs font-medium', columnHeader ? 'min-w-0' : 'min-w-24 flex-1']}
       title={readOnly ? tr('This request is closed. The document is read-only.') : tr('Record observations, problems, and suggestions.')}>
       {tr(workspace.workbench && workspace.workbench.type !== 'ramble' ? 'Additional notes (optional)' : 'Feedback document')}
     </h2>
-    {#if hasCookedVariant}
-      <div class="flex shrink-0 items-center gap-1 rounded-md border bg-muted/30 p-0.5">
-        <Button
-          variant={publishedView === 'cooked' ? 'secondary' : 'ghost'}
-          size="sm"
-          class={publishedView === 'cooked' ? 'h-7 px-2 text-[10px]' : 'size-7 p-0'}
-          aria-label="Cooked"
-          title="Cooked"
-          onclick={() => (publishedView = 'cooked')}
-        >
-          <Sparkles data-icon={publishedView === 'cooked' ? 'inline-start' : undefined} />
-          {#if publishedView === 'cooked'}Cooked{/if}
-        </Button>
-        <Button
-          variant={publishedView === 'uncooked' ? 'secondary' : 'ghost'}
-          size="sm"
-          class={publishedView === 'uncooked' ? 'h-7 px-2 text-[10px]' : 'size-7 p-0'}
-          aria-label="Uncooked"
-          title="Uncooked"
-          onclick={() => (publishedView = 'uncooked')}
-        >
-          <FileText data-icon={publishedView === 'uncooked' ? 'inline-start' : undefined} />
-          {#if publishedView === 'uncooked'}Uncooked{/if}
-        </Button>
-      </div>
-    {/if}
-    <!-- Submit and cancel sit on the document title row so they stay reachable
-         without scrolling to the end of the feedback. -->
-    {#if headerActions}
-      <div class="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2" data-feedback-actions>{@render headerActions()}</div>
-    {/if}
+    <div class={columnHeader ? 'flex min-h-0 min-w-0 items-center gap-2 overflow-x-auto' : 'contents'}>
+      {#if hasCookedVariant}
+        <div class="flex shrink-0 items-center gap-1 rounded-md border bg-muted/30 p-0.5">
+          <Button
+            variant={publishedView === 'cooked' ? 'secondary' : 'ghost'}
+            size="sm"
+            class={publishedView === 'cooked' ? 'h-7 px-2 text-[10px]' : 'size-7 p-0'}
+            aria-label="Cooked"
+            title="Cooked"
+            onclick={() => (publishedView = 'cooked')}
+          >
+            <Sparkles data-icon={publishedView === 'cooked' ? 'inline-start' : undefined} />
+            {#if publishedView === 'cooked'}Cooked{/if}
+          </Button>
+          <Button
+            variant={publishedView === 'uncooked' ? 'secondary' : 'ghost'}
+            size="sm"
+            class={publishedView === 'uncooked' ? 'h-7 px-2 text-[10px]' : 'size-7 p-0'}
+            aria-label="Uncooked"
+            title="Uncooked"
+            onclick={() => (publishedView = 'uncooked')}
+          >
+            <FileText data-icon={publishedView === 'uncooked' ? 'inline-start' : undefined} />
+            {#if publishedView === 'uncooked'}Uncooked{/if}
+          </Button>
+        </div>
+      {/if}
+      <!-- Submit and cancel stay above the document so they remain reachable
+           without scrolling to the end of the feedback. -->
+      {#if headerActions}
+        <div class={['ml-auto flex items-center justify-end gap-2', columnHeader ? 'shrink-0' : 'min-w-0 max-w-full flex-wrap']} data-feedback-actions>{@render headerActions()}</div>
+      {/if}
+    </div>
   </header>
 
   {#if cookedDraftReady}

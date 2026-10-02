@@ -6,20 +6,21 @@ import { createTerminalWorkbenchController, type TerminalWorkbenchController } f
 import type { TerminalData, TerminalTrialSession } from '../../generated/feedback'
 import { locale } from '../../preferences'
 import { emptyTerminalState, type TerminalState } from '../terminalModel'
+import { TERMINAL_APPEARANCE_KEY, terminalAppearanceFor } from './terminalAppearance'
 import type { TerminalSessionSnapshot } from './terminalController'
 import TerminalWorkbench from './TerminalWorkbench.svelte'
 
 type Hooks = { onData: (data: string) => void; onResize: (size: { cols: number; rows: number }) => void; onSelection: (text: string) => void }
 const bridge = vi.hoisted(() => ({
   hooks: null as Hooks | null, screen: '', interactive: false,
-  dispose: vi.fn(), focus: vi.fn(), factory: vi.fn(),
+  dispose: vi.fn(), focus: vi.fn(), factory: vi.fn(), setAppearance: vi.fn(),
 }))
 vi.mock('./xtermAdapter', () => ({ createXtermAdapter: async (_root: HTMLElement, hooks: Hooks) => {
   bridge.factory(); bridge.hooks = hooks
   return { size: () => ({ cols: 80, rows: 24 }), fit() {}, focus: bridge.focus,
     reset: () => bridge.screen = '', write: async (output: string) => { bridge.screen += output },
     screen: () => bridge.screen, selection: () => '', setInteractive: (value: boolean) => bridge.interactive = value,
-    dispose: bridge.dispose }
+    setAppearance: bridge.setAppearance, dispose: bridge.dispose }
 } }))
 const data: TerminalData = { cwd: '/project' }
 const snapshot = (changes: Partial<TerminalSessionSnapshot> = {}): TerminalSessionSnapshot => ({
@@ -33,6 +34,7 @@ let wire: ReturnType<typeof vi.fn>
 const onQuote = vi.fn(), onOpenReview = vi.fn()
 const button = (text: string): HTMLButtonElement => [...document.querySelectorAll('button')].find((node) => node.textContent?.trim() === text || node.getAttribute('aria-label') === text)!
 beforeEach(() => {
+  localStorage.removeItem(TERMINAL_APPEARANCE_KEY)
   locale.set('en'); state = emptyTerminalState(); bridge.screen = ''; bridge.hooks = null; bridge.interactive = false; vi.clearAllMocks()
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
   wire = vi.fn(async (name: string) => name === 'stopTerminalSession' ? snapshot({ status: 'stopped' }) : snapshot())
@@ -53,6 +55,48 @@ async function start() {
 }
 
 describe('terminal workbench', () => {
+  it('applies and saves color changes without replacing the live renderer or trial', async () => {
+    wire.mockImplementation(async (name: string, input: { after_sequence?: number | null }) =>
+      name === 'readTerminalSession' && input.after_sequence !== null ? snapshot({ output: '' }) : snapshot())
+    open(); await start()
+    bridge.hooks!.onSelection('selected output')
+    const saved = structuredClone(state), screen = bridge.screen
+    const before = wire.mock.calls.filter(([name]) => name === 'openTerminalSession' || name === 'stopTerminalSession')
+    button('Terminal style').click()
+    await vi.waitFor(() => expect(button('Paper')).toBeDefined())
+    button('Paper').click()
+    await vi.waitFor(() => expect(bridge.setAppearance).toHaveBeenLastCalledWith(terminalAppearanceFor('paper').theme))
+    expect(button('Paper').getAttribute('aria-pressed')).toBe('true')
+    expect(localStorage.getItem(TERMINAL_APPEARANCE_KEY)).toBe('paper')
+    expect(document.querySelector('[data-terminal-workbench]')?.getAttribute('data-terminal-style')).toBe('paper')
+    expect(bridge.factory).toHaveBeenCalledTimes(1)
+    expect(bridge.dispose).not.toHaveBeenCalled()
+    expect(bridge.interactive).toBe(true)
+    expect(bridge.screen).toBe(screen)
+    expect(state).toEqual(saved)
+    expect(wire.mock.calls.filter(([name]) => name === 'openTerminalSession' || name === 'stopTerminalSession')).toEqual(before)
+    button('Close').click()
+    button('Quote selected output').click()
+    expect(onQuote).toHaveBeenCalledWith('Terminal trial · /project\n\n> selected output')
+    bridge.hooks!.onData('help\r')
+    await vi.waitFor(() => expect(wire).toHaveBeenCalledWith('writeTerminalSession', { request_id: 'request-1', session_id: 'trial-1', data: 'help\r' }))
+  })
+  it('restores the saved appearance and keeps cosmetic choices available in history', async () => {
+    localStorage.setItem(TERMINAL_APPEARANCE_KEY, 'amber')
+    open(true, { type: 'terminal', sessions: [{ id: 'saved', cwd: '/project', shell: 'bash', cols: 80, rows: 24,
+      status: 'stopped', exit_code: null, output: 'saved output', screen: 'saved output', truncated: false }] })
+    await vi.waitFor(() => expect(document.querySelector('[data-terminal-workbench]')?.getAttribute('data-terminal-style')).toBe('amber'))
+    button('Terminal style').click()
+    await vi.waitFor(() => expect(button('Forest')).toBeDefined())
+    button('Forest').click()
+    await vi.waitFor(() => expect(document.querySelector('[data-terminal-workbench]')?.getAttribute('data-terminal-style')).toBe('forest'))
+    expect(document.querySelector('[data-terminal-history] pre')?.textContent).toBe('saved output')
+    expect(bridge.factory).not.toHaveBeenCalled()
+    expect(wire).not.toHaveBeenCalled()
+    await unmount(view!); view = undefined; runtime.dispose()
+    open()
+    await vi.waitFor(() => expect(bridge.setAppearance).toHaveBeenLastCalledWith(terminalAppearanceFor('forest').theme))
+  })
   it('keeps saved output and allows local submission after the backend permanently loses the session', async () => {
     const saved: TerminalTrialSession = { id: 'saved-trial', cwd: '/project', shell: 'bash', cols: 80, rows: 24,
       status: 'running', exit_code: null, output: '$ previous output', screen: '$ previous output', truncated: false }

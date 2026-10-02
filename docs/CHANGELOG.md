@@ -26,10 +26,12 @@ Human feedback workbenches
 - Document review keeps the source unchanged, supports continuing paragraph comments and suggested wording, and requires an explicit review decision. Paragraph removal is a reversible suggestion.
 - Web review opens the actual page, captures element comments, and keeps the same page and draft when moving between ordinary and expanded tabs. Cross-origin development pages must load the review bridge and permit embedding.
 - Terminal trials use a real PTY on the backend machine. Start or restart explicitly, retain up to 16 trials per request, quote selected output into feedback, and stop and drain the terminal before submission.
+- Terminal appearance offers four color presets. Changes apply immediately, preserve the running trial, and share a saved preference across ordinary, expanded, and history views.
 - Drag sorting supports keyboard and pointer reordering, label edits, deletion and restoration. Submitted results keep final labels, order, and deleted IDs; sorting stays in the ordinary view.
 
 Workspace and extension development
 - Request context and materials stay above the workbench's scrolling content. The feedback column shares one draft and submission flow with every type.
+- Headers for request navigation, request details, and feedback share one height. Collapsed request navigation hides filters and counts while keeping request shortcuts.
 - Expanded tabs are optional per type and disabled in the ordinary template. Types that enable them retain session navigation and the same request state.
 - A workbench scaffold adds type-owned contracts, rules, fields, views, and playground materials through two shared registration files. The rating_review acceptance example is restricted to development builds.
 
@@ -42,6 +44,7 @@ Acceptance boundaries
 - 正文、答案和批注共享语音、粘贴、截图、附件与语音整理；已开始的输入固定原请求和字段，正文与结构化状态共同保存。
 - 文稿审阅保留原稿，支持批注续写、建议改写、可恢复删除线和显式整稿判断；网页评审保留真实网页、元素意见及普通/全屏页签往返状态，跨源开发页需接入 bridge 并允许嵌入。
 - 终端运行在后端主机，主动开始或重启，每请求最多保存 16 轮，选中输出可引用到正文，提交前停止并收尾输出。排序支持拖动、键盘、名称编辑、删除与恢复，结果保留最终名称、顺序及删除 ID，普通视图无全屏入口。
+- 终端新增四种配色预设，切换即时生效并保留正在运行的试用，普通、全屏和历史视图共用已保存的样式。请求页面三列表头高度统一，收起请求栏时隐藏筛选按钮和数量，保留请求快捷入口。
 - 公共情况说明和材料固定在业务区上方；普通类型通过两份共享注册文件扩展，脚手架默认关闭全屏，rating_review 仅供开发验收。
 - Playground 用七个场景覆盖六种正式类型，再以汇总请求收尾；自动化与预览不能替代真实设备验收。类型化框架与本轮专用工作台扩展属于 0.4.0 之后的源码开发，已发布的 0.4.0 保留既有 Ramble 流程。
 

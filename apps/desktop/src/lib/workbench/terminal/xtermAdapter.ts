@@ -1,5 +1,7 @@
 import type { TerminalRenderer } from './terminalController'
 import { terminalScreen } from './terminalScreen'
+import { TERMINAL_APPEARANCES } from './terminalAppearance'
+import type { ITheme } from '@xterm/xterm'
 
 export type TerminalAdapter = TerminalRenderer & {
   size: () => { cols: number; rows: number }
@@ -7,6 +9,7 @@ export type TerminalAdapter = TerminalRenderer & {
   focus: () => void
   selection: () => string
   setInteractive: (value: boolean) => void
+  setAppearance: (theme: ITheme) => void
   dispose: () => void
 }
 
@@ -15,13 +18,13 @@ export async function createXtermAdapter(root: HTMLElement, hooks: {
   onData: (data: string) => void
   onResize: (size: { cols: number; rows: number }) => void
   onSelection: (text: string) => void
-}): Promise<TerminalAdapter> {
+}, theme: ITheme = TERMINAL_APPEARANCES[0].theme): Promise<TerminalAdapter> {
   const [{ Terminal }, { FitAddon }] = await Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit')])
   const terminal = new Terminal({
     cursorBlink: true, fontSize: 13, lineHeight: 1.2,
     fontFamily: '"Geist Mono Variable", "Fira Code Variable", Consolas, monospace',
     scrollback: 3000, screenReaderMode: true, minimumContrastRatio: 4.5,
-    theme: { background: '#16191f', foreground: '#e5e7eb', cursor: '#e5e7eb', selectionBackground: '#5873a966' },
+    theme: { ...theme },
   })
   const fit = new FitAddon()
   terminal.loadAddon(fit)
@@ -44,6 +47,7 @@ export async function createXtermAdapter(root: HTMLElement, hooks: {
     write: (output) => new Promise<void>((resolve) => { if (disposed) resolve(); else terminal.write(output, resolve) }),
     screen: () => terminalScreen(terminal), focus: () => terminal.focus(),
     selection: () => terminal.getSelection(), setInteractive: (value) => { interactive = value; terminal.options.cursorBlink = value },
+    setAppearance: (next) => { if (!disposed) terminal.options.theme = { ...next } },
     dispose: () => { disposed = true; subscriptions.forEach((subscription) => subscription.dispose()); terminal.dispose() },
   }
 }

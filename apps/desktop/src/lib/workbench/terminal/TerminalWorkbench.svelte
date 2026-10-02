@@ -3,7 +3,7 @@
   import { ClipboardCopy, Maximize2, Play, Square, Terminal as TerminalIcon } from '@lucide/svelte'
   import '@xterm/xterm/css/xterm.css'
   import { Button } from '$lib/components/ui/button'
-  import type { TerminalData, TerminalTrialSession } from '$lib/generated/feedback'
+  import type { TerminalData } from '$lib/generated/feedback'
   import { locale } from '$lib/preferences'
   import { emptyTerminalState, TERMINAL_SESSION_LIMIT, type TerminalState } from '../terminalModel'
   import { terminalTextTail } from './terminalController'
@@ -11,6 +11,8 @@
   import { createXtermAdapter, type TerminalAdapter } from './xtermAdapter'
   import { terminalText } from './terminalI18n'
   import { isMissingTerminalSession } from './terminalErrors'
+  import { initializeTerminalAppearance, terminalAppearance } from './terminalAppearance'
+  import TerminalAppearancePicker from './TerminalAppearancePicker.svelte'
 
   export let data: TerminalData
   export let runtime: TerminalWorkbenchController | undefined = undefined
@@ -36,6 +38,7 @@
   $: trialLimitReached = current.sessions.length >= TERMINAL_SESSION_LIMIT && latest?.status !== 'running'
   $: interactive = ready && !disabled && !readOnly && !busy && !error && latest?.status === 'running'
   $: adapter?.setInteractive(interactive)
+  $: adapter?.setAppearance($terminalAppearance.theme)
   $: runtime?.setLocked(disabled || readOnly)
   $: if (readOnly && adapter) detach()
 
@@ -59,7 +62,7 @@
     const next = await createXtermAdapter(root, {
       onData: (input) => { void runtime?.write(input).catch(() => undefined) },
       onResize: resized, onSelection: (text) => selection = text,
-    })
+    }, $terminalAppearance.theme)
     if (!mounted || readOnly) { next.dispose(); return }
     adapter = next
     adapter.fit()
@@ -91,13 +94,14 @@
   }
   onMount(() => {
     mounted = true
+    const releaseAppearance = initializeTerminalAppearance()
     const observer = new ResizeObserver(() => adapter?.fit())
     if (!readOnly) {
       initialization = initialize()
       void initialization.catch(showError)
       observer.observe(root)
     }
-    return () => { mounted = false; observer.disconnect(); detach() }
+    return () => { mounted = false; observer.disconnect(); detach(); releaseAppearance() }
   })
   // ANSI is rendered by xterm while live. History presents its saved screen plus a text transcript.
   function plainOutput(output: string) {
@@ -105,10 +109,12 @@
   }
 </script>
 
-<section class="terminal-workbench" data-terminal-workbench>
+<section class="terminal-workbench" data-terminal-workbench data-terminal-style={$terminalAppearance.id}
+  style:--terminal-background={$terminalAppearance.theme.background} style:--terminal-foreground={$terminalAppearance.theme.foreground} style:--terminal-muted={$terminalAppearance.muted}>
   <header class="terminal-toolbar" data-terminal-toolbar>
     <div class="terminal-heading"><TerminalIcon class="size-4" /><span>{tr('Terminal trial')}</span></div>
     <div class="terminal-actions">
+      <TerminalAppearancePicker />
       {#if !readOnly}
         {#if !latest || error || latest.status !== 'running'}
           <Button size="sm" variant="outline" disabled={!ready || disabled || busy || trialLimitReached} onclick={() => void start()}>
@@ -167,17 +173,17 @@
   .terminal-context code { min-width: 0; overflow-wrap: anywhere; flex: 1; }
   .terminal-status { white-space: nowrap; }
   .terminal-limit { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--muted-foreground); }
-  .terminal-stage { flex: 1; min-height: 300px; position: relative; background: #16191f; overflow: hidden; }
+  .terminal-stage { flex: 1; min-height: 300px; position: relative; background: var(--terminal-background); overflow: hidden; }
   .terminal-surface { position: absolute; inset: 0; padding: 10px; overflow: hidden; }
   .terminal-surface :global(.xterm) { height: 100%; }
-  .terminal-empty { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; color: #9ca3af; font-size: 12px; padding: 20px; text-align: center; }
+  .terminal-empty { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; color: var(--terminal-muted); font-size: 12px; padding: 20px; text-align: center; }
   footer { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 12px; font-size: 10px; color: var(--muted-foreground); }
   .terminal-error { margin: 0; padding: 8px 12px; font-size: 12px; color: var(--destructive); }
   .terminal-history { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
   .terminal-history article + article { margin-top: 16px; }
   .terminal-history-heading { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; margin-bottom: 6px; }
   .terminal-history-heading span:last-child, .terminal-history p { color: var(--muted-foreground); font-size: 11px; overflow-wrap: anywhere; }
-  .terminal-history pre { background: #16191f; color: #e5e7eb; padding: 10px; border-radius: 5px; overflow: auto; font-size: 12px; line-height: 1.4; }
+  .terminal-history pre { background: var(--terminal-background); color: var(--terminal-foreground); padding: 10px; border-radius: 5px; overflow: auto; font-size: 12px; line-height: 1.4; }
   .terminal-history summary { font-size: 11px; margin-top: 8px; cursor: pointer; }
   @media (max-width: 600px) { .terminal-toolbar { padding-inline: 8px; } .terminal-heading { width: 100%; } }
 </style>
