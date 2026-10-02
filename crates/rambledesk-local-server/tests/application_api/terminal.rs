@@ -96,7 +96,13 @@ async fn terminal_application_http_reconnects_resizes_and_cleans_up_host_cancell
     );
     let opened = snapshot(&client, address, "openTerminalSession", open.clone()).await?;
     assert_eq!(opened.request_id, request);
-    assert_eq!(opened.cwd, directory.path().to_string_lossy());
+    // Snapshots report the canonical directory without Windows' verbatim prefix.
+    let canonical_cwd = directory.path().canonicalize()?;
+    let expected_cwd = canonical_cwd.to_string_lossy();
+    assert_eq!(
+        opened.cwd,
+        expected_cwd.strip_prefix(r"\\?\").unwrap_or(&expected_cwd)
+    );
     let session = &opened.session_id;
     let read = json!({"request_id":request,"session_id":session,"after_sequence":null});
     if cfg!(windows) {
