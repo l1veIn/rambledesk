@@ -22,6 +22,8 @@ if (-not $IsWindows -or $env:GITHUB_ACTIONS -cne 'true' -or
     throw 'Installer smoke test requires a disposable GitHub-hosted Windows X64 runner; local and self-hosted execution is forbidden.'
 }
 
+. (Join-Path $PSScriptRoot 'windows-installer-binary.ps1')
+
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 if (-not $env:GITHUB_WORKSPACE -or
     [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE) -ne $repoRoot -or
@@ -199,7 +201,12 @@ try {
     Assert-Smoke ($report.current.installation.binary_sha256 -ne $report.baseline.installation.binary_sha256) 'Upgrade replaces the baseline executable'
     $buildDirectory = Split-Path (Split-Path (Split-Path $InstallerPath -Parent) -Parent) -Parent
     $builtBinary = Join-Path $buildDirectory (Split-Path $report.current.installation.binary -Leaf)
-    Assert-Smoke ((Get-FileHash -LiteralPath $builtBinary -Algorithm SHA256).Hash -eq $report.current.installation.binary_sha256) 'Installed executable matches the binary from this build'
+    $report.current.binary_verification = Compare-TauriNsisBinary `
+        -BuildBytes ([IO.File]::ReadAllBytes($builtBinary)) `
+        -InstalledBytes ([IO.File]::ReadAllBytes($report.current.installation.binary))
+    $report.current.binary_verification.build_path = $builtBinary
+    Assert-Smoke $report.current.binary_verification.passed `
+        "Installed executable matches the complete NSIS payload from this build: $($report.current.binary_verification.errors -join '; ')"
     Assert-Markers 'Upgrade'
 
     $report.resources = @($config.bundle.resources.PSObject.Properties | ForEach-Object {

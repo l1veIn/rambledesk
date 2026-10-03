@@ -49,6 +49,7 @@ Agent feedback continuation
 - Explicitly stopping a managed session prevents already-queued feedback from automatically restarting its Agent within the current runtime. A new submission or explicit connection retry can resume delivery. Pending permissions and other interactions still require the user's response.
 
 Acceptance boundaries
+- Request summaries in what_happened are limited to 200 Unicode scalar values; longer requests return INVALID_ARGUMENT without truncation. Put detailed materials in workbench data or attachments. See docs/PROTOCOL.md.
 - Playground preparation validates required attachment names before creating a run. Visual, diff, sorting, and development rating fixtures now include file_name; image references retain the exact saved attachment name.
 - The playground covers ten production types in thirteen scenarios, including blank-canvas drawing, image annotation, table review, and separate audio/video reviews, followed by a summary request. Existing runs retain their saved stages and request IDs. Preview fixtures and automated checks do not establish microphone, screenshot, physical-phone, codec support on every platform, or cross-platform PTY compatibility.
 - This is a test release after 0.4.0, not the stable updater target. Windows ships an NSIS installer with a Tauri updater signature; Authenticode is not enabled. Apple Silicon macOS ships an ad-hoc signed DMG without notarization or automatic updates. Follow the README first-launch instructions.
@@ -56,6 +57,7 @@ Acceptance boundaries
 - Fixed table edits losing unsaved text on double-click, failed or unfinished agent tools appearing as file changes, Windows UNC terminal working directories, generated playground attachment names, and the website demo becoming stuck while publishing.
 
 中文摘要
+- 请求的 what_happened 情况摘要限制为 200 个 Unicode 标量值；超限返回 INVALID_ARGUMENT，不会自动截断。详细材料放入工作台 data 或附件，详见 docs/PROTOCOL.md。
 - 原生窗口启动时适配显示器可用区域，小屏和高 DPI 环境使用已有响应式布局。权限卡片保留精确工具 ID，并补齐当前会话、当前轮次对应的命令或文件详情；没有详情时明确提示，不自动批准。
 - 修复消息刚发送就取消时取消指令丢失的竞态；尚未发给 Agent 的消息也会取消，迟到的取消不会影响下一轮。
 - 新增十种正式工作台：自由反馈、逐项问答、文稿审阅、网页评审、终端试用、拖动排序、视觉反馈、差异评审、表格评审和媒体评审。新单选使用单题问答，旧 single_choice 请求保留原合同与结果。
