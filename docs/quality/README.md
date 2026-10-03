@@ -32,6 +32,7 @@
 
 ## 按任务复验
 
+- [0.5.0-rc.1 源码与 Windows 原生验收](RELEASE_0_5_0_RC1_ACCEPTANCE.md)：2026-10-03 固定提交 `456dfeb` 的 51 提交审查、三平台 CI、真实 Agent 两轮、表格/音频恢复与发布、官方 0.4.0 数据升级及备份回退；正式候选产物按独立判据记录。
 - [视觉反馈与差异评审](WORKBENCH_VISUAL_DIFF_ACCEPTANCE.md)：2026-10-02 的 Windows 源码检查、固定材料浏览器观察和容量边界。
 - [隔离反馈夹具](FEEDBACK_ACCEPTANCE.md)：真实 HTTP、SQLite、CAS、发布包与浏览器下载。
 - [性能测量](PERFORMANCE_ACCEPTANCE.md)：固定构建、数据集、预算和资源观察。
