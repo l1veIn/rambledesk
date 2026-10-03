@@ -164,6 +164,15 @@ async fn uncooperative_cancel_stops_only_the_owned_instance() {
     })
     .await
     .unwrap();
+    // This case exercises an agent ignoring cancellation after receiving work,
+    // not a prompt correctly cancelled before its first protocol dispatch.
+    wait_for(&app, &id(&first), |snapshot| {
+        snapshot
+            .activities
+            .iter()
+            .any(|row| row.text == "WAITING FOR CANCELLATION")
+    })
+    .await;
     app.cancel_prompt(id(&first)).await.unwrap();
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {

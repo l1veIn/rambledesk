@@ -35,6 +35,7 @@ Human feedback workbenches
 - Free feedback, document review, web review, terminal trials, visual feedback, diff review, table review, and media review offer five-step first-use guides and a Show guide entry. Guides explain controls without changing drafts, creating comments, starting a terminal, or playing media. Diff review's updated guide has its own new guide version.
 
 Workspace and extension development
+- The native window fits the available monitor work area at startup and supports smaller, high-DPI displays through the existing responsive layout.
 - Request context and materials stay above the workbench's scrolling content. The feedback column shares one draft and submission flow with every type.
 - Headers for request navigation, request details, and feedback share one height. Collapsed request navigation hides filters and counts while keeping request shortcuts.
 - Expanded tabs are optional per type and disabled in the ordinary template. Types that enable them retain session navigation and the same request state.
@@ -42,6 +43,8 @@ Workspace and extension development
 - Optional guide metadata lives in each workbench definition. A shared guide engine reads it directly, preserving existing first-use records and avoiding a separate type list or guide file.
 
 Agent feedback continuation
+- Permission cards retain the exact tool identity and show its command or file details from the current session and turn when the Agent omits repeated context. Missing details remain explicit; no permission is granted automatically.
+- Cancelling immediately after sending also cancels a prompt that has not reached the Agent yet; a late cancellation cannot target the next turn.
 - Submitted feedback initializes or resumes its original ACP session without opening the Agent page. Slow initialization in one session does not hold delivery in another; startup failures remain visible and await explicit retry.
 - Explicitly stopping a managed session prevents already-queued feedback from automatically restarting its Agent within the current runtime. A new submission or explicit connection retry can resume delivery. Pending permissions and other interactions still require the user's response.
 
@@ -53,6 +56,8 @@ Acceptance boundaries
 - Fixed table edits losing unsaved text on double-click, failed or unfinished agent tools appearing as file changes, Windows UNC terminal working directories, generated playground attachment names, and the website demo becoming stuck while publishing.
 
 中文摘要
+- 原生窗口启动时适配显示器可用区域，小屏和高 DPI 环境使用已有响应式布局。权限卡片保留精确工具 ID，并补齐当前会话、当前轮次对应的命令或文件详情；没有详情时明确提示，不自动批准。
+- 修复消息刚发送就取消时取消指令丢失的竞态；尚未发给 Agent 的消息也会取消，迟到的取消不会影响下一轮。
 - 新增十种正式工作台：自由反馈、逐项问答、文稿审阅、网页评审、终端试用、拖动排序、视觉反馈、差异评审、表格评审和媒体评审。新单选使用单题问答，旧 single_choice 请求保留原合同与结果。
 - 正文、答案和批注共享语音、粘贴、截图、附件与语音整理；已开始的输入固定原请求和字段，正文与结构化状态共同保存。
 - 文稿审阅保留原稿，支持批注续写、建议改写、可恢复删除线和显式整稿判断；网页评审保留真实网页、元素意见及普通/全屏页签往返状态，跨源开发页需接入 bridge 并允许嵌入。
@@ -63,7 +68,7 @@ Acceptance boundaries
 - 公共情况说明和材料固定在业务区上方；普通类型通过两份共享注册文件扩展，脚手架默认关闭全屏，rating_review 仅供开发验收。
 - 可选引导在各工作台现有 definition 中声明，共享引导组件直接读取，保留首次使用记录，无需独立类型名单或引导文件。
 - 提交反馈后由后台初始化或恢复原 ACP 会话，无需先打开 Agent 页面；慢连接不阻塞其他会话，启动失败保留原因并等待显式重试。当前运行实例中显式停止托管会话后旧队列不自行重启，新提交或显式连接可恢复投递，权限等交互仍由用户作答。
-- Playground 准备流程在创建轮次前验证附件必填名称；补齐视觉反馈、差异评审、排序及开发评分样例的 file_name，图片引用与附件保存名精确匹配。
+- Playground 准备流程在创建轮次前验证附件必填名称；补齐视觉反馈、差异评审、排序及开发评分样例的 file_name，图片引用与附件保存名精确匹配。目录别名按真实路径校验，避免 macOS 临时目录中的合法附件被误判越界。
 - 表格评审保留原始值，分别记录单元格建议与批注；媒体评审支持音视频的时间点和区间意见，主动播放，评论时暂停，材料上限 20 MiB。
 - Playground 用十三个场景覆盖十种正式类型，分别体验空白画布、图片批注、表格及音频/视频，再以汇总请求收尾；自动化与预览不能替代真实设备验收。
 - 本版本为候选测试版，不替换稳定更新目标。Windows 提供 NSIS 与 Tauri updater 签名，尚无 Authenticode；Apple Silicon DMG 使用 ad-hoc 签名，尚未公证、不支持应用内更新，首次打开按 README 操作。

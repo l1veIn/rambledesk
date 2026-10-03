@@ -216,6 +216,9 @@
             onRespond={response => respondInteraction(inputInteraction.request_id, { kind: inputInteraction.kind, response })} />
         {/key}
       {:else}
+      {#if interaction.tool_call_id}
+        <p class="mb-0 mt-2 break-all font-mono text-[11px] text-muted-foreground">{tr('Tool call ID')}: {redactAgentMessage(interaction.tool_call_id, envText)}</p>
+      {/if}
       {#if interactionDetails.trim()}
         {#key interaction.request_id}
           <details open class="mt-3 rounded-md border border-amber-500/25 bg-background/50 px-3 py-2 text-xs">
@@ -223,6 +226,8 @@
             <pre class="mb-0 mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5">{interactionDetails}</pre>
           </details>
         {/key}
+      {:else}
+        <p class="mb-0 mt-3 text-xs text-muted-foreground">{tr('The agent did not provide operation details.')}</p>
       {/if}
       <div class="mt-3 flex flex-wrap gap-2">
         {#each interaction.options as option (option.option_id)}<Button variant={option.kind.toLowerCase().startsWith('reject') ? 'outline' : 'secondary'} size="sm" disabled={busy || lifecyclePending || interactionPending || !actions.canCancel} onclick={() => void respondInteraction(interaction.request_id, { kind: 'permission', option_id: option.option_id })}>{redactAgentMessage(option.name, envText)}</Button>{/each}

@@ -46,6 +46,7 @@ impl AgentSessionConnection for Connection {
                         title: "Review fixture access".into(),
                         details: None,
                         kind: SessionInteractionKind::Permission {
+                            tool_call_id: None,
                             options: vec![SessionPermissionOption {
                                 option_id: "allow".into(),
                                 name: "Allow once".into(),

@@ -45,7 +45,10 @@ async fn feedback_status_reads_live_execution_and_defaults_to_stopped_without_a_
                 session_id: ids[0].clone(),
                 title: "Approve".into(),
                 details: None,
-                kind: SessionInteractionKind::Permission { options: vec![] },
+                kind: SessionInteractionKind::Permission {
+                    tool_call_id: None,
+                    options: vec![],
+                },
             },
         ))
         .await
@@ -258,6 +261,7 @@ struct Connection {
     finish: Notify,
     closed: AtomicBool,
     response_gate: Mutex<Option<(Arc<Notify>, Arc<Notify>)>>,
+    cancel_gate: Mutex<Option<(Arc<Notify>, Arc<Notify>)>>,
     responses: Mutex<Vec<SessionInteractionResponse>>,
 }
 #[async_trait]
@@ -270,6 +274,12 @@ impl AgentSessionConnection for Connection {
         Ok("EndTurn".into())
     }
     async fn cancel(&self) -> Result<(), AgentDriverError> {
+        let gate = self.cancel_gate.lock().unwrap().take();
+        if let Some((entered, release)) = gate {
+            entered.notify_one();
+            release.notified().await;
+            return Ok(());
+        }
         self.finish.notify_one();
         Ok(())
     }
@@ -303,6 +313,7 @@ impl AgentSessionDriver for Driver {
             finish: Notify::new(),
             closed: AtomicBool::new(false),
             response_gate: Mutex::new(None),
+            cancel_gate: Mutex::new(None),
             responses: Mutex::new(vec![]),
         });
         self.connections

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -71,6 +71,25 @@ test('attachment names preserve Unicode and the backend byte limit without guess
     fixture(base, '01-custom.json', 'custom_review', { attachments: [{ file_name, path: 'materials/brief.md' }] })
     assert.equal(loadCases(base)[0].input.attachments[0].file_name, expected)
   }
+})
+
+test('a playground directory alias accepts internal materials and still rejects escaping symlinks', (t) => {
+  const base = playground(t)
+  const outside = playground(t)
+  const alias = join(outside, 'linked-playground')
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+  symlinkSync(base, alias, linkType)
+  fixture(base, '01-custom.json')
+  assert.equal(loadCases(alias)[0].input.attachments[0].path, realpathSync(join(base, 'materials', 'brief.md')))
+  assert.equal(prepare({ base: alias }).fixtures.length, 1)
+
+  symlinkSync(join(outside, 'materials'), join(base, 'materials', 'outside'), linkType)
+  fixture(base, '01-custom.json', 'custom_review', {
+    attachments: [{ file_name: 'brief.md', path: 'materials/outside/brief.md' }],
+  })
+  assert.throws(() => loadCases(alias), /attachments\[0\].path: Path must stay inside the playground/)
+  assert.throws(() => prepare({ base: alias, command: 'new' }), /Path must stay inside the playground/)
+  assert.equal(existsSync(join(base, '.runs')), false)
 })
 
 test('attachment path and source failures identify the fixture and do not leave a run', (t) => {

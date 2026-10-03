@@ -75,7 +75,10 @@ impl AgentSessionConnection for FakeConnection {
                         session_id: self.session_id.clone(),
                         title: "Allow access?".into(),
                         details: None,
-                        kind: SessionInteractionKind::Permission { options: vec![] },
+                        kind: SessionInteractionKind::Permission {
+                            tool_call_id: None,
+                            options: vec![],
+                        },
                     },
                 ))
                 .await?;

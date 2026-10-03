@@ -30,6 +30,10 @@ pub struct SessionInteraction {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SessionInteractionKind {
     Permission {
+        /// Exact tool identity supplied by the agent, never inferred from order.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        tool_call_id: Option<String>,
         options: Vec<SessionPermissionOption>,
     },
     Question {
@@ -87,7 +91,7 @@ impl SessionInteraction {
     pub fn allows(&self, response: &SessionInteractionResponse) -> bool {
         match (&self.kind, response) {
             (
-                SessionInteractionKind::Permission { options },
+                SessionInteractionKind::Permission { options, .. },
                 SessionInteractionResponse::Permission { option_id },
             ) => option_id
                 .as_ref()
@@ -190,6 +194,10 @@ impl SessionApplication {
     ) -> Result<ManagedSessionSnapshot, SessionError> {
         self.managed_record(&input.session_id).await?;
         let entry = self.entry(&input.session_id).await;
+        // Keep the selected turn stable until its cancellation is dispatched.
+        // A completed turn must not admit a replacement while an older cancel
+        // is still on its way to the driver.
+        let lifecycle = entry.lifecycle.lock().await;
         let events = entry.events.lock().await;
         let turn = events.turn_id.clone();
         let mut live = entry.live.lock().await;
@@ -206,6 +214,7 @@ impl SessionApplication {
         drop(live);
         drop(events);
         connection.cancel().await?;
+        drop(lifecycle);
         self.session_changed(&input.session_id);
         let app = self.clone();
         let session_id = input.session_id.clone();

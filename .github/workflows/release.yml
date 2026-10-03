@@ -113,6 +113,30 @@ jobs:
           # Release candidates exercise the NSIS updater path; stable tags ship both installers.
           args: ${{ contains(github.ref_name, '-') && '--target x86_64-pc-windows-msvc --bundles nsis' || '--target x86_64-pc-windows-msvc --bundles nsis,msi' }}
 
+      - name: Verify Windows installation, upgrade, and uninstall
+        shell: pwsh
+        timeout-minutes: 25
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installers = @(Get-ChildItem $env:GITHUB_WORKSPACE -Recurse -File -Filter "*_x64-setup.exe" |
+            Where-Object { $_.FullName -match "\\bundle\\nsis\\" })
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one built x64 NSIS installer, found $($installers.Count)."
+          }
+          ./scripts/windows-installer-smoke.ps1 -InstallerPath $installers[0].FullName
+
+      - name: Upload Windows installer smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/windows-installer-smoke/report.json
+            ${{ runner.temp }}/windows-installer-smoke/*.log
+            ${{ runner.temp }}/windows-installer-smoke/downloads/SHA256SUMS.txt
+          if-no-files-found: warn
+
       - name: Generate and upload stable updater manifest
         shell: pwsh
         env:

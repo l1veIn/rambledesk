@@ -317,8 +317,16 @@ export type SessionInputResponse = { action: SessionInputAction,
  */
 content_json: string | null, };
 export type SessionInputAction = "accept" | "decline" | "cancel";
-export type SessionInteraction = { request_id: string, session_id: string, title: string, details: string | null, } & ({ "kind": "permission", options: Array<SessionPermissionOption>, } | { "kind": "question", input: SessionInputRequest, } | { "kind": "plan", input: SessionInputRequest, });
-export type SessionInteractionKind = { "kind": "permission", options: Array<SessionPermissionOption>, } | { "kind": "question", input: SessionInputRequest, } | { "kind": "plan", input: SessionInputRequest, };
+export type SessionInteraction = { request_id: string, session_id: string, title: string, details: string | null, } & ({ "kind": "permission",
+/**
+ * Exact tool identity supplied by the agent, never inferred from order.
+ */
+tool_call_id?: string, options: Array<SessionPermissionOption>, } | { "kind": "question", input: SessionInputRequest, } | { "kind": "plan", input: SessionInputRequest, });
+export type SessionInteractionKind = { "kind": "permission",
+/**
+ * Exact tool identity supplied by the agent, never inferred from order.
+ */
+tool_call_id?: string, options: Array<SessionPermissionOption>, } | { "kind": "question", input: SessionInputRequest, } | { "kind": "plan", input: SessionInputRequest, };
 export type SessionInteractionResponse = { "kind": "permission", option_id: string | null, } | { "kind": "question", response: SessionInputResponse, } | { "kind": "plan", response: SessionInputResponse, };
 export type RespondManagedInteractionInput = { session_id: string, request_id: string, response: SessionInteractionResponse, };
 export type SendManagedPromptInput = { session_id: string, text: string, };

@@ -2,6 +2,8 @@ use super::*;
 use crate::ApplicationResourceKey;
 #[path = "activity_aggregation.rs"]
 mod aggregation;
+#[path = "permission_context.rs"]
+mod permission_context;
 use async_trait::async_trait;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -171,6 +173,7 @@ impl SessionApplication {
         } else {
             None
         };
+        connection.prepare_prompt();
         live.runtime.activity = SessionActivityState::Running;
         live.cancelling = false;
         live.runtime.last_error = None;
@@ -493,10 +496,11 @@ impl SessionApplication {
                 tool_call_id,
                 append,
             } => (kind, text, tool_call_id, append),
-            AgentSessionEvent::InteractionRequested(permission) => {
+            AgentSessionEvent::InteractionRequested(mut permission) => {
                 if permission.session_id != session_id {
                     return Err(SessionError::InvalidInput);
                 }
+                permission_context::hydrate(&mut permission, &stream);
                 let mut live = entry.live.lock().await;
                 if live.cancelling || live.runtime.activity == SessionActivityState::Idle {
                     let connection = live.connection.clone();

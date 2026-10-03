@@ -1,3 +1,5 @@
+#[path = "prompt_content/dispatch.rs"]
+mod dispatch;
 mod support;
 
 use rambledesk_core::*;

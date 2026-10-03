@@ -41,6 +41,14 @@ README 必须明确对应的 SmartScreen / Gatekeeper 首次启动步骤。
 
 默认生产构建只发现十种正式工作台，旧 `single_choice` 保留兼容，开发评分 `rating_review` 不进入生产目录或视图 bundle。开发 feature 验收与扩展演练单独运行，不能据此把测试类型编入发行包。
 
+Windows 发布 job 构建 NSIS 后，在独立 GitHub-hosted Windows runner 执行
+[`windows-installer-smoke.ps1`](../scripts/windows-installer-smoke.ps1)，输入本次构建的安装器。
+脚本校验当前稳定版安装器的 SHA-256，完成真实安装 → 覆盖升级 → 卸载，并核对注册表、版本、
+可执行文件、打包资源、快捷方式，以及合成文件在升级和卸载后的保留情况；拒绝在本机或 self-hosted runner 安装。
+工作流以 `always()` 上传 `windows-installer-smoke-<run_id>-<run_attempt>` artifact，内含
+`report.json`、过程日志和基线校验清单。发布前确认报告成功且绑定本次提交与安装器 SHA-256。
+原生 UI、真实草稿恢复和数据库迁移按下方安装验收另记；合成文件保留不代表这些项目已通过。
+
 ## Signing, notarization and updater
 
 - Windows 基础配置的 `bundle.createUpdaterArtifacts` 必须开启；macOS 平台配置必须覆盖为关闭。

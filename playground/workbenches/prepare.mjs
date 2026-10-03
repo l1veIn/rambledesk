@@ -37,6 +37,8 @@ function prepareAttachment(base, attachment, field) {
 
 /** New ordinary workbenches add their own JSON fixture; no central type list. */
 export function loadCases(base = root, development = false) {
+  // Compare canonical paths on both sides (macOS temporary roots can use /var aliases).
+  base = realpathSync(base)
   const fixtures = join(base, 'fixtures')
   const files = readdirSync(fixtures).filter((name) => name.endsWith('.json')).sort()
     .map((name) => ({ name, path: join(fixtures, name) }))
