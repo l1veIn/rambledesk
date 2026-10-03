@@ -17,6 +17,7 @@ const originalData = diffReviewDefinition.examples![0].spec.data as DiffReviewDa
 const saved: DiffReviewState = { type: 'diff_review', comments: [
   { id: 'saved', anchor: { file_id: 'quickstart', hunk_index: 0, side: 'new', start_line: 2, end_line: 3 }, body: 'Saved comment' },
 ] }
+const largeData: DiffReviewData = { ...originalData, files: [{ id: 'large', old_path: '/dev/null', new_path: 'large.ts', diff: '@@ -0,0 +1,1500 @@\n' + Array.from({ length: 1500 }, (_, index) => `+line ${index + 1}`).join('\n') }] }
 const documentTarget: InputTarget = { requestId: 'review', requestTitle: 'Review', destination: { kind: 'document', action: null } }
 let view: ReturnType<typeof mount> | undefined
 beforeEach(() => {
@@ -161,10 +162,9 @@ describe('diff review interactions', () => {
     expect(document.querySelector('[data-diff-add-comment]')).toBeNull()
     expect(app.onChange).not.toHaveBeenCalled()
   })
-  it('bounds large diff rendering and jumps historical anchors into the correct source window', async () => {
-    const data = { ...originalData, files: [{ id: 'large', old_path: '/dev/null', new_path: 'large.ts', diff: '@@ -0,0 +1,1500 @@\n' + Array.from({ length: 1500 }, (_, index) => `+line ${index + 1}`).join('\n') }] }
+  it('bounds large diff rendering when jumping to historical anchors and returning to the previous window', async () => {
     const history: DiffReviewState = { type: 'diff_review', comments: [{ id: 'late', body: 'Later line', anchor: { file_id: 'large', hunk_index: 0, side: 'new', start_line: 1400, end_line: 1401 } }] }
-    const app = await open(history, data)
+    const app = await open(history, largeData)
     expect(document.querySelectorAll('[data-diff-text]')).toHaveLength(1000)
     expect(line('new', 1400)).toBeNull()
     document.querySelector<HTMLButtonElement>('[data-diff-comment="late"]')!.click(); await tick()
@@ -173,9 +173,22 @@ describe('diff review interactions', () => {
     expect(line('new', 1401).getAttribute('aria-pressed')).toBe('true')
     expect(app.onChange).not.toHaveBeenCalled()
     button('Previous lines').click(); await tick()
+    expect(document.querySelectorAll('[data-diff-text]')).toHaveLength(1000)
+    expect(line('new', 1000)).not.toBeNull()
+    expect(line('new', 1400)).toBeNull()
+    expect(app.props.current.state).toEqual(history)
+    expect(app.onChange).not.toHaveBeenCalled()
+  })
+  it('moves a large diff keyboard range across the source window boundary', async () => {
+    const app = await open(null, largeData)
+    expect(document.querySelectorAll('[data-diff-text]')).toHaveLength(1000)
+    expect(line('new', 1001)).toBeNull()
+    line('new', 1000).focus()
     await key(line('new', 1000), 'ArrowDown', true)
     expect(document.activeElement).toBe(line('new', 1001))
     expect(document.querySelectorAll('[data-diff-text]')).toHaveLength(500)
+    expect(line('new', 1001).getAttribute('aria-pressed')).toBe('true')
+    expect(app.onChange).not.toHaveBeenCalled()
   })
   it('gates expanded mode through the host and resets transient selection on source replacement', async () => {
     const app = await open()
