@@ -1,5 +1,119 @@
 use super::*;
 
+const ADVERTISED_WORKBENCHES: [&str; 10] = [
+    "ramble",
+    "questions",
+    "document_review",
+    "web_review",
+    "terminal",
+    "sort",
+    "visual_feedback",
+    "diff_review",
+    "table_review",
+    "media_review",
+];
+
+#[tokio::test]
+async fn every_advertised_workbench_can_be_created_by_each_managed_adapter() -> anyhow::Result<()> {
+    use base64::Engine as _;
+
+    let fixture = Fixture::new().await?;
+    let endpoint = fixture.provider.bind(&fixture.sessions[0]).await?;
+    let session = fixture.initialize(&endpoint).await?;
+    let app = fixture.store.clone().into_application();
+    // One second of real PCM16 audio exercises material ingestion, not just JSON.
+    let mut wav = b"RIFF".to_vec();
+    wav.extend(16036u32.to_le_bytes());
+    wav.extend(b"WAVEfmt ");
+    wav.extend(16u32.to_le_bytes());
+    wav.extend(1u16.to_le_bytes());
+    wav.extend(1u16.to_le_bytes());
+    wav.extend(8000u32.to_le_bytes());
+    wav.extend(16000u32.to_le_bytes());
+    wav.extend(2u16.to_le_bytes());
+    wav.extend(16u16.to_le_bytes());
+    wav.extend(b"data");
+    wav.extend(16000u32.to_le_bytes());
+    wav.resize(16044, 0);
+
+    for kind in ADVERTISED_WORKBENCHES {
+        let description = fixture
+            .call(
+                &endpoint,
+                &session,
+                "describe_workbench",
+                json!({"type":kind}),
+            )
+            .await?;
+        let mut workbench = description["structuredContent"]["example"].clone();
+        if kind == "media_review" {
+            workbench["data"]["media_kind"] = json!("audio");
+            workbench["data"]["media_file_name"] = json!("review.wav");
+            workbench["data"]["duration_ms"] = json!(1000);
+        }
+        for create_with_mcp in [true, false] {
+            let request_id = uuid::Uuid::now_v7().to_string();
+            let mut input = json!({
+                "request_id":request_id, "what_happened":"Review the discovery example",
+                "workbench":workbench,
+            });
+            if kind == "media_review" {
+                input["attachments"] = json!([{
+                    "file_name":"review.wav",
+                    "contents_base64":base64::engine::general_purpose::STANDARD.encode(&wav),
+                }]);
+            }
+            // Each adapter creates a fresh request and the other replays it.
+            // This catches adapters that advertise a kind but drop its payload.
+            for use_mcp in [create_with_mcp, !create_with_mcp] {
+                let response = if use_mcp {
+                    fixture
+                        .call(&endpoint, &session, "request_feedback", input.clone())
+                        .await?["structuredContent"]
+                        .clone()
+                } else {
+                    fixture
+                        .command(&endpoint, "request", input.clone())
+                        .send()
+                        .await?
+                        .error_for_status()?
+                        .json::<Value>()
+                        .await?
+                };
+                assert_eq!(
+                    response["request_id"], request_id,
+                    "{kind}, MCP={use_mcp}: {response}"
+                );
+            }
+            let workspace = app.get_feedback_workspace(request_id.clone()).await?;
+            assert_eq!(
+                serde_json::to_value(workspace.workbench)?,
+                workbench,
+                "{kind}"
+            );
+            if kind == "media_review" {
+                assert_eq!(workspace.request_attachments.len(), 1);
+                let material = &workspace.request_attachments[0];
+                assert_eq!(material.media_type, "audio/wav");
+                assert_eq!(material.file_name, "review.wav");
+                assert_eq!(
+                    app.read_request_attachment(request_id.clone(), material.attachment_id.clone())
+                        .await?,
+                    wav
+                );
+            }
+            app.cancel_feedback(CancelFeedbackInput {
+                request_id,
+                reason: "Completed request-creation contract check".into(),
+            })
+            .await?;
+        }
+    }
+    fixture.server.shutdown().await?;
+    fixture.store.close().await;
+    Ok(())
+}
+
 #[tokio::test]
 async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_contracts()
 -> anyhow::Result<()> {
@@ -39,19 +153,22 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             .iter()
             .map(|entry| entry["type"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        [
-            "ramble",
-            "questions",
-            "document_review",
-            "web_review",
-            "terminal",
-            "sort",
-            "visual_feedback",
-            "diff_review",
-        ]
+        ADVERTISED_WORKBENCHES
     );
     assert!(generic["next_offset"].is_null());
-    for kind in ["sort", "visual_feedback", "diff_review"] {
+    let managed_catalog: Value = fixture
+        .command(&endpoint, "list_workbenches", json!({}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let mcp_catalog = fixture
+        .call(&endpoint, &session, "list_workbenches", json!({}))
+        .await?;
+    assert_eq!(managed_catalog, generic);
+    assert_eq!(mcp_catalog["structuredContent"], generic);
+    for kind in ADVERTISED_WORKBENCHES {
         let description: Value = fixture
             .command(&endpoint, "describe_workbench", json!({"type":kind}))
             .send()

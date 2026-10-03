@@ -93,7 +93,8 @@ test('repository fixtures prepare explicit attachment names and the exact image 
   const source = dirname(fileURLToPath(import.meta.url))
   for (const directory of ['fixtures', 'materials']) cpSync(join(source, directory), join(base, directory), { recursive: true })
   const loaded = loadCases(base, true)
-  for (const file of ['07-visual-feedback.json', '08-visual-image.json', '09-diff-review.json', 'sort.json', 'development-rating_review.json']) {
+  for (const file of ['07-visual-feedback.json', '08-visual-image.json', '09-diff-review.json', '10-table-review.json',
+    '11-media-audio.json', '12-media-video.json', 'sort.json', 'development-rating_review.json']) {
     assert.ok(loaded.some((item) => item.file === file), `${file} is included in the contract regression`)
   }
   const run = prepare({ base, command: 'new', development: true })
@@ -110,6 +111,14 @@ test('repository fixtures prepare explicit attachment names and the exact image 
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
   assert.equal(png.readUInt32BE(16), image.workbench.data.width)
   assert.equal(png.readUInt32BE(20), image.workbench.data.height)
+  for (const item of loaded.filter((item) => item.type === 'media_review')) {
+    const { media_file_name, duration_ms } = item.input.workbench.data
+    const materials = item.input.attachments.filter((attachment) => attachment.file_name === media_file_name)
+    assert.equal(materials.length, 1, `${item.file} references one exact frozen media filename`)
+    const bytes = readFileSync(materials[0].path)
+    assert.ok(bytes.length > 44 && bytes.length <= 20 * 1024 * 1024)
+    assert.ok(Number.isInteger(duration_ms) && duration_ms > 0)
+  }
 })
 
 test('the real CLI decodes prepared fixtures before an isolated loopback handoff', {

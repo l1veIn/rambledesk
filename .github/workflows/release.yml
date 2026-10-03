@@ -40,6 +40,7 @@ jobs:
       - run: pnpm test:pi
       - run: pnpm test:dsh
       - run: pnpm test:workbench-tools
+      - run: python scripts/feedback-acceptance-test.py
       - run: cargo test -p rambledesk-core -p rambledesk-storage --features workbench-fixtures --locked
       - run: cargo test --workspace --exclude rambledesk-desktop --locked
       - run: cargo test -p rambledesk-desktop --locked --target-dir target/desktop
@@ -47,6 +48,9 @@ jobs:
       - run: pnpm contracts:check
       - run: pnpm test:workbench-extension
       - run: pnpm mcp:inspector-smoke
+      - run: pnpm -C web check
+      - run: pnpm test:web
+      - run: pnpm -C web build
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -9,6 +9,8 @@ import { webReviewDefinition } from './web_review/definition'
 import { terminalDefinition } from './terminal/definition'
 import { visualFeedbackDefinition } from './visual_feedback/definition'
 import { diffReviewDefinition } from './diff_review/definition'
+import { tableReviewDefinition } from './table_review/definition'
+import { mediaReviewDefinition } from './media_review/definition'
 import { record, text } from './stateShape'
 
 const developmentDefinitions: readonly WorkbenchDefinition[] = import.meta.env.DEV &&
@@ -21,6 +23,7 @@ export const workbenchDefinitions: readonly WorkbenchDefinition[] = [
   ...developmentDefinitions,
   sortDefinition,
   visualFeedbackDefinition, diffReviewDefinition,
+  tableReviewDefinition, mediaReviewDefinition,
 ]
 export function getWorkbenchDefinition(type: string, version = 1): WorkbenchDefinition | undefined {
   return workbenchDefinitions.find((definition) => definition.type === type && definition.version === version)

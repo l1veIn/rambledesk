@@ -6,8 +6,8 @@
 
 1. 读取本目录 README.md。测试期间只读固定材料，只在 .runs/ 写运行产物。不要修改父仓库代码、修复应用、安装依赖或替用户操作工作台。
 2. 使用本会话注入的 RAMBLEDESK_COMMAND 命令。不要读取、打印、保存或改写私有 RAMBLEDESK_FEEDBACK_* 变量，不拼接 HTTP endpoint，不使用其他会话的 MCP/Pi/dsh 通道。
-3. 调用 feedback list-workbenches --limit 20，按 next_offset 读完目录；完整新轮确认 ramble、questions、document_review、web_review、terminal、sort、visual_feedback、diff_review 的 v1 均可用；只测网页时确认 web_review 与汇总所用的 ramble，只测终端时确认 terminal 与 ramble。分别调用 feedback describe-workbench --type <type> --version 1，核对 fixtures 中的合同。恢复旧轮只要求其持久化阶段与汇总需要的类型，不因新增阶段阻止旧轮恢复。不要把整个目录或凭据写入报告。
-4. 缺少命令、会话能力或所需类型时，直接说明具体缺项和需要重开/更新的应用版本；不要用自由正文替代类型、伪造成功或悄悄跳过。若目录多于这八种类型，报告本套材料实际覆盖的类型及额外未覆盖项，不能声称全覆盖。
+3. 调用 feedback list-workbenches --limit 20，按 next_offset 读完目录；完整新轮确认 ramble、questions、document_review、web_review、terminal、sort、visual_feedback、diff_review、table_review、media_review 的 v1 均可用；只测某类型时确认该类型与汇总所用的 ramble。分别调用 feedback describe-workbench --type <type> --version 1，核对 fixtures 中的合同。恢复旧轮只要求其持久化阶段与汇总需要的类型，不因新增阶段阻止旧轮恢复。不要把整个目录或凭据写入报告。
+4. 缺少命令、会话能力或所需类型时，直接说明具体缺项和需要重开/更新的应用版本；不要用自由正文替代类型、伪造成功或悄悄跳过。若目录多于这十种类型，报告本套材料实际覆盖的类型及额外未覆盖项，不能声称全覆盖。
 5. 检查 .runs/latest.json 及对应 run.json。若已有本轮记录，先按记录中的 request_id 用 feedback get / recover 取真实状态；不能仅凭本地阶段判断已提交。用户说“继续”但没有记录时，说明没有可恢复的本轮记录，不擅自启动新轮。
 6. 非终态请求只恢复原请求并结束当前回合，不能新建、轮询、sleep 或阻塞等待。若待恢复的是网页阶段，先按下文恢复原 URL 的样例服务，再交还原请求；先根据真实请求状态记下它已发送，不能把本地 prepared 当作改写已发 URL 的授权。取消即中止本轮。用户明确要求新一轮时，必须先确认原请求已终态；不能自动取消原请求。跨会话无法恢复时回原会话继续，不为同一轮另开 ID。
 
@@ -31,23 +31,23 @@ Bash/sh 使用 "$RAMBLEDESK_COMMAND" feedback ...，保持参数与 JSON 文件�
 node prepare.mjs new
 ~~~
 
-脚本只生成本地文件，不发请求。它生成独立 UUID、将附件路径变成绝对路径，按实际 stages 为完整新轮的请求标题生成 `x/N` 编号，写出 .runs/<run-id>/run.json、各阶段请求文件，并更新 latest.json。当前默认有十个场景；新增类型由 fixture 自动发现，不改其他材料里的固定总数。已有未结束轮会被拒绝；先取得真实终态并更新 run.json。恢复时不重新编号已发送请求。
+脚本只生成本地文件，不发请求。它生成独立 UUID、将附件路径变成绝对路径，按实际 stages 为完整新轮的请求标题生成 `x/N` 编号，写出 .runs/<run-id>/run.json、各阶段请求文件，并更新 latest.json。当前默认有十三个场景；新增类型由 fixture 自动发现，不改其他材料里的固定总数。已有未结束轮会被拒绝；先取得真实终态并更新 run.json。恢复时不重新编号已发送请求。
 
 用户明确说“只测试网页评审工作台”时，使用 `node prepare.mjs new web_review`，本轮 stages 只有 `05-web-review.json`。直接进入下方网页服务准备，发送唯一网页请求后做汇总；不把其余工作台记为已测。该模式同样不能绕过未结束旧轮。
 
-用户要求体验新增普通类型时，先调用目录和 `describe-workbench` 核对该类型及汇总所用 `ramble`，执行 `node prepare.mjs check <type>`，再用 `new <type>` 准备。按本类型的材料和结果 schema 核对，不追加到旧轮或替代固定十场景。开发评分演练显式加 `--development` 并确认后端提供 `rating_review`；缺少开发构建时说明缺项。所有身份、恢复、单次交接和汇总规则保持一致。
+用户要求体验新增普通类型时，先调用目录和 `describe-workbench` 核对该类型及汇总所用 `ramble`，执行 `node prepare.mjs check <type>`，再用 `new <type>` 准备。按本类型的材料和结果 schema 核对，不追加到旧轮或替代固定十三场景。`table_review` 筛选得到一个场景，`media_review` 得到音频和视频两个场景。开发评分演练显式加 `--development` 并确认后端提供 `rating_review`；缺少开发构建时说明缺项。所有身份、恢复、单次交接和汇总规则保持一致。
 
 没有 Node 时，执行等价操作：先核对每个附件有必填的 `file_name` 和本目录内现存的 `path`，再创建 .runs/<时间戳-随机标识>/，复制本轮需要的 fixture，每份先分配独立 UUID 并写入 request_id，把 attachment.path 解析为绝对路径并保留 file_name，再按 prepare.mjs 的 run.json 结构记录进度，更新 latest.json。网页阶段还需要已有的可用开发服务器；没有服务时明确说明缺项，不安装依赖、跳过网页或把纯文本反馈记为网页体验。
 
 所有请求 ID 必须在发送前持久化。保存 CLI 原始响应为对应阶段的 receipt.json / result.json（可在同一命令中写出并显示 stdout）；不要把“请求成功建立”误记成“人类测试通过”。一旦交接成功，结束当前回合，不连续发起后面的请求。超时或投递不确定时保留 ID，先 recover，绝不能另造 ID重试。
 
-## 3. 十个场景
+## 3. 十三个场景
 
 只测试终端时，先确认 `terminal` 和汇总所用 `ramble` 可用，再执行 `node prepare.mjs new terminal`。本轮只有 `06-terminal.json`；prepare 将其中 cwd 占位值解析为 playground 绝对目录，不要直接发送原始模板。Node CLI 只读取固定样例，无服务准备步骤。发送后结束当前回合；结果核对与汇总沿用下述规则，独立终端轮也只有两张卡。恢复旧轮严格保留其原始 stages，不自动追加终端阶段。
 
 每次只发送 run.json 中尚未完成的一个阶段。请求材料中已经包含人类操作说明，不额外要求用户在聊天里回复“继续”。
 
-完整新轮覆盖八种类型，第 2、3 步均为 questions，第 7、8 步均为 visual_feedback；独立网页轮只覆盖网页阶段与汇总。恢复旧轮时严格按该轮保存的 stages、输入和 type 核对，不自动追加阶段、重新编号或替换汇总路径。已有 `03-single-choice.json` / `single_choice` 请求仍检查 `selected_option_id` 与旧 `status`，不要更换请求 ID、改写输入或要求已退出发现目录的类型重新出现。
+完整新轮覆盖十种类型，第 2、3 步均为 questions，第 7、8 步均为 visual_feedback，第 11、12 步均为 media_review；独立网页轮只覆盖网页阶段与汇总。恢复旧轮时严格按该轮保存的 stages、输入和 type 核对，不自动追加阶段、重新编号或替换汇总路径。已有 `03-single-choice.json` / `single_choice` 请求仍检查 `selected_option_id` 与旧 `status`，不要更换请求 ID、改写输入或要求已退出发现目录的类型重新出现。
 
 | 阶段 | 输入文件 | 提交后检查 |
 | --- | --- | --- |
@@ -60,7 +60,10 @@ node prepare.mjs new
 | 7 | 07-visual-feedback.json | 检查空白画布底色、绘制及意见恢复，result.source_version/width/height/annotations 与原请求一致，composite_attachment_id 指向本轮合成 PNG。 |
 | 8 | 08-visual-image.json | 背景来自唯一同名持久图片，尺寸正确，标注与意见定位到原画布；检查 PNG、只读历史及原图保持不变。 |
 | 9 | 09-diff-review.json | 检查来源版本、文件 ID、零基 hunk_index、old/new 侧和实际行闭区间；整块批注两个行号均为 null，意见与整体正文来自真实提交。 |
-| 10 | sort.json | 检查 sort 的 result.order、items 与 removed_ids；保留与删除的 ID 恰好覆盖全部输入，编辑后的文字与顺序符合人类体验，正文可为空，提交后只读。 |
+| 10 | 10-table-review.json | 检查 result.source_version、changes 的 row_id/column_id/value 和 comments 的单元格锚点；原表保持不变，建议值独立保存，定位、键盘编辑、批注与全屏需实际体验。 |
+| 11 | 11-media-audio.json | 播放实际音频，检查时间点／区间批注的 start_ms/end_ms/body、来源版本和文件名；点击批注只定位、不自动播放。 |
+| 12 | 12-media-video.json | 播放实际视频，检查时间轴区间、批注回访、全屏与只读历史；草稿和时间锚点保持不变，加载或解码失败如实记录。 |
+| 13 | sort.json | 检查 sort 的 result.order、items 与 removed_ids；保留与删除的 ID 恰好覆盖全部输入，编辑后的文字与顺序符合人类体验，正文可为空，提交后只读。 |
 
 ### 网页服务准备与恢复
 
@@ -104,6 +107,10 @@ node web-review-server.mjs start '<本轮绝对目录>'
 
 排序重点：核对 `manifest.workbench.type=sort`，`result.order` 按优先级从高到低保存保留条目的稳定 ID，`result.items` 同序保存编辑后的名称，`removed_ids` 记录删除项目。保留与删除必须构成原输入的完整、无重复划分，不新增 ID；显式删除全部条目可返回空列表。空名称能保存草稿，但保留的条目名称为空时不能提交。保留初始顺序也是有效结果，排序理由从反馈正文读取。旧版仅 order 的历史结果按原输入名称解释，不改写旧结果。编辑、删除与恢复、拖动、手柄键盘排序、切换请求后的恢复和提交后只读都需要实际操作或用户明确报告；普通工作台没有全屏入口或上下按钮。触屏未体验时记为未验证。
 
+表格审阅重点：核对 `manifest.workbench.type=table_review` 和原始 `source_version`。`changes` 的行列 ID 均来自原表，每个单元格最多一项建议，value 与原值不同；空字符串表示建议清空。`comments` 的 id 唯一、row_id/column_id 存在、body 非空。原表和材料不改写，建议单独返回。记录方向键定位、Enter/F2 编辑、Enter 保存、Escape 取消、原值对照、批注回访、普通/全屏共享草稿、保存恢复及只读历史的实际体验；只有整体正文也可提交，已有空白批注应阻止提交。没有实际操作的项目记为未验证。
+
+音视频审阅重点：核对 `manifest.workbench.type=media_review`，结果的 `source_version` 和 `duration_ms` 与原请求一致，材料来自请求中唯一同名的冻结附件。每条批注 id 唯一，`start_ms` 为 0 到 duration_ms 的整数；时间点的 `end_ms=null`，区间满足 start_ms < end_ms <= duration_ms，body 非空。读取结果不证明媒体实际可解码或已播放；分别记录音频和视频播放、开始批注时暂停、点击批注只定位、不自动播放、区间定位、普通/全屏保留、恢复、只读播放及引导不播放。显示时长不符或容器/编解码不支持时如实报告，不能擅改原始时长或批注锚点；没有体验的项目记为未验证。
+
 共享输入重点：
 
 - 新请求默认向右侧正文输入；正文、自定义回答、批注意见和建议措辞顶部都应有麦克风、截图、粘贴和附件工具栏，并共享一个录音会话。
@@ -119,15 +126,15 @@ node web-review-server.mjs start '<本轮绝对目录>'
 ## 4. 汇总与结束
 
 本轮 stages 中的真实结果读完后，在当前运行目录创建 REPORT.md，至少包含：
-- 本轮标识、实际运行的全部 request_id、类型/版本；完整新轮为十个场景，独立类型轮按筛选结果，旧轮按原记录。
+- 本轮标识、实际运行的全部 request_id、类型/版本；完整新轮为十三个场景，独立类型轮按筛选结果，旧轮按原记录。
 - 每种工作台的实际人类输入摘要和结构化结果检查结论。
 - 区分“结果验证通过 / 用户报告问题 / 未验证 / 中止”，并列出问题复现材料。
 - 特别记录是否实际测试了默认输入区、每框顶部工具栏、同框暂停/跨框切换、右下 Rambelle 条件式整理、自定义回答、字段附件标签与换框后归属、清除或改选后的迟到转写、跨字段“整理 N 段语音”、键入与普通粘贴不入整理批次、异步整理期间修改或删除的保护、空正文提交、Unicode 选区、批注原地续写与收起摘要、段落删除线与恢复、删除建议、原稿内批注阅读与续写、草稿恢复。没证据就写未验证。
 - 人类主动说没问题可以作为其体验反馈记录，但不能代替结构化结果核对。
 
-使用 run.json 预留的 report_request_id 写出汇总输入：文件编号取 `stages.length + 1`，两位数字（完整新轮 `11-report.json`、独立网页/终端轮 `02-report.json`、原七阶段旧轮仍为 `08-report.json`、原四阶段旧轮仍为 `05-report.json`）；恢复已发送汇总时使用原文件。workbench.type=ramble、version=1、data.actions 只放一个“查看本轮报告”的动作；title="工作台测试 · 本轮汇总"；what_happened 不超过 200 个 Unicode 标量值；REPORT.md 作为绝对路径 Markdown 附件；allow_finish=true；final_summary 用实际发现写简短摘要（最多 12000 字符）。不要预先写“全部通过”。
+使用 run.json 预留的 report_request_id 写出汇总输入：文件编号取 `stages.length + 1`，两位数字（完整新轮 `14-report.json`、独立网页/终端/表格轮 `02-report.json`、独立音视频轮 `03-report.json`、原十阶段旧轮仍为 `11-report.json`、原七阶段旧轮仍为 `08-report.json`、原四阶段旧轮仍为 `05-report.json`）；恢复已发送汇总时使用原文件。workbench.type=ramble、version=1、data.actions 只放一个“查看本轮报告”的动作；title="工作台测试 · 本轮汇总"；what_happened 不超过 200 个 Unicode 标量值；REPORT.md 作为绝对路径 Markdown 附件；allow_finish=true；final_summary 用实际发现写简短摘要（最多 12000 字符）。不要预先写“全部通过”。
 
-将本轮状态写为 awaiting_report，把汇总卡发给人类并结束当前回合。用户可批准结束，也可提交补充问题。读到批准或取消后更新本轮状态并结束，不再递归发确认卡。若提交补充意见，将其加入报告；只有用户明确表示结束时才按托管会话的 task_finished 机制结束，否则回应实际问题并按该会话规则交接，不能把补充意见当作批准。完整新轮十一张卡、独立网页/终端轮两张卡是正常完成路径，追加问题可能产生后续交接。这个测试任务本身不修复应用；用户另行明确要求的工作另算。
+将本轮状态写为 awaiting_report，把汇总卡发给人类并结束当前回合。用户可批准结束，也可提交补充问题。读到批准或取消后更新本轮状态并结束，不再递归发确认卡。若提交补充意见，将其加入报告；只有用户明确表示结束时才按托管会话的 task_finished 机制结束，否则回应实际问题并按该会话规则交接，不能把补充意见当作批准。完整新轮十四张卡、独立网页/终端/表格轮两张卡、独立音视频轮三张卡是正常完成路径，追加问题可能产生后续交接。这个测试任务本身不修复应用；用户另行明确要求的工作另算。
 
 若补充意见需要后续交接，发送前把新 request_id、输入文件路径、阶段与状态写入 run.json.followups；恢复时优先检查未终态 followup，不能退回汇总卡重复发送。用户明确结束后将 run.status 更新为 completed。
 

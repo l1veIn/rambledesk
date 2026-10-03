@@ -45,11 +45,15 @@ jobs:
       - run: pnpm test:pi
       - run: pnpm test:dsh
       - run: pnpm test:workbench-tools
+      - run: python scripts/feedback-acceptance-test.py
       - run: cargo test -p rambledesk-core -p rambledesk-storage --features workbench-fixtures
       - run: pnpm build:web
       - run: pnpm contracts:check
       - run: pnpm test:workbench-extension
       - run: pnpm mcp:inspector-smoke
+      - run: pnpm -C web check
+      - run: pnpm test:web
+      - run: pnpm -C web build
 
   verify-windows:
     runs-on: windows-latest
@@ -81,6 +85,7 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm test:workbench-tools
+      - run: python scripts/feedback-acceptance-test.py
       - run: cargo test -p rambledesk-core -p rambledesk-storage --features workbench-fixtures
       - run: pnpm build:web
       - run: pnpm contracts:check
@@ -115,6 +120,7 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm test:workbench-tools
+      - run: python scripts/feedback-acceptance-test.py
       - run: cargo test -p rambledesk-core -p rambledesk-storage --features workbench-fixtures
       - run: pnpm build:web
       - run: pnpm contracts:check

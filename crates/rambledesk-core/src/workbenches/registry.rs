@@ -67,4 +67,16 @@ register_workbenches! {
         result: (DiffReviewResult),
         exports: [DiffReviewData, DiffReviewFile, DiffReviewSide, DiffReviewAnchor, DiffReviewComment, DiffReviewState, DiffReviewResult]
     }
+    TableReview => table_review {
+        wire: "table_review", data: TableReviewData,
+        state: [TableReview(TableReviewState),],
+        result: (TableReviewResult),
+        exports: [TableReviewData, TableReviewColumn, TableReviewRow, TableReviewChange, TableReviewComment, TableReviewState, TableReviewResult]
+    }
+    MediaReview => media_review {
+        wire: "media_review", data: MediaReviewData,
+        state: [MediaReview(MediaReviewState),],
+        result: (MediaReviewResult),
+        exports: [MediaReviewKind, MediaReviewData, MediaReviewComment, MediaReviewState, MediaReviewResult]
+    }
 }

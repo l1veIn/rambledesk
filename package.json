@@ -1,7 +1,7 @@
 {
   "name": "rambledesk",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0-rc.1",
   "packageManager": "pnpm@10.12.4",
   "scripts": {
     "dev": "pnpm -C apps/desktop tauri dev",
@@ -13,6 +13,7 @@
     "test:workbench-tools": "node --test scripts/workbench-new.test.mjs playground/workbenches/prepare.test.mjs playground/workbenches/web-review-server.test.mjs",
     "test:workbench-extension": "node scripts/workbench-extension-smoke.mjs",
     "test": "pnpm -C apps/desktop test",
+    "test:web": "pnpm -C apps/desktop exec vitest run --config ../../web/vitest.config.mjs",
     "test:pi": "pnpm -C packages/pi-rambledesk test",
     "test:dsh": "pnpm -C packages/dsh-rambledesk test",
     "test:rust": "cargo test --workspace --exclude rambledesk-desktop && cargo test -p rambledesk-desktop --target-dir target/desktop",

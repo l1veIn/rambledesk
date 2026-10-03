@@ -30,6 +30,13 @@
     delivery?: DeliveryState
   }
 
+  interface SaveState {
+    phase: 'saved' | 'saving' | 'unsaved'
+    revision: number
+  }
+
+  type TimerKind = 'save' | 'tidy' | 'submit'
+
   const instanceId = $props.id()
   const content = $derived(mockContent(lang))
   const ui = $derived(content.ui)
@@ -55,13 +62,12 @@
   let briefOpen = $state(true)
   let editingBlockId = $state<string | null>(null)
   let previewCapture = $state<string | null>(null)
-  let submitting = $state(false)
+  let submissions = $state<Record<string, boolean>>({})
   let ramblePhase = $state<'idle' | 'recording'>('idle')
-  let tidyBusy = $state(false)
-  let savePhase = $state<'saved' | 'saving' | 'unsaved'>('saved')
-  let savedRevision = $state(1)
+  let tidying = $state<Record<string, boolean>>({})
+  let saves = $state<Record<string, SaveState>>({})
   let blockSeq = 0
-  let timers: ReturnType<typeof setTimeout>[] = []
+  const timers = new Map<ReturnType<typeof setTimeout>, { requestId: string; kind: TimerKind }>()
 
   const allSessions = $derived(content.sessions)
   const session = $derived(
@@ -88,6 +94,10 @@
     (request ? documents[request.id] : null) ?? request?.document ?? [],
   )
   const requestAttachments = $derived((request ? attachments[request.id] : null) ?? [])
+  const submitting = $derived(request ? (submissions[request.id] ?? false) : false)
+  const tidyBusy = $derived(request ? (tidying[request.id] ?? false) : false)
+  const savePhase = $derived((request ? saves[request.id]?.phase : null) ?? 'saved')
+  const savedRevision = $derived((request ? saves[request.id]?.revision : null) ?? 1)
   const status = $derived(request ? effectiveStatus(request) : 'waiting')
   const delivery = $derived(
     request ? (overrides[request.id]?.delivery ?? request.delivery) : 'none',
@@ -130,31 +140,35 @@
     return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   }
 
-  function later(ms: number, run: () => void) {
+  function later(requestId: string, kind: TimerKind, ms: number, run: () => void) {
     const timer = setTimeout(
       () => {
-        timers = timers.filter((item) => item !== timer)
+        timers.delete(timer)
         run()
       },
       prefersReducedMotion() ? 0 : ms,
     )
-    timers.push(timer)
+    timers.set(timer, { requestId, kind })
   }
 
-  function clearTimers() {
-    for (const timer of timers) clearTimeout(timer)
-    timers = []
+  function clearTimers(requestId?: string, kind?: TimerKind) {
+    for (const [timer, owner] of timers) {
+      if (requestId !== undefined && owner.requestId !== requestId) continue
+      if (kind !== undefined && owner.kind !== kind) continue
+      clearTimeout(timer)
+      timers.delete(timer)
+    }
   }
 
-  onDestroy(clearTimers)
+  onDestroy(() => clearTimers())
 
   /** The first write seeds the draft from the scripted document, then edits stay local. */
-  function ensureDocument(): DocumentBlock[] {
-    if (!request) return []
-    if (!documents[request.id]) {
-      documents[request.id] = request.document.map((block) => ({ ...block }))
+  function ensureDocument(owner: MockRequest | null = request): DocumentBlock[] {
+    if (!owner) return []
+    if (!documents[owner.id]) {
+      documents[owner.id] = owner.document.map((block) => ({ ...block }))
     }
-    return documents[request.id]
+    return documents[owner.id]
   }
 
   function nextBlockId(prefix: string) {
@@ -162,27 +176,30 @@
     return `${prefix}-${blockSeq}`
   }
 
-  function autosave() {
-    clearTimers()
-    savePhase = 'unsaved'
-    later(420, () => {
-      savePhase = 'saving'
-      later(520, () => {
-        savePhase = 'saved'
-        savedRevision += 1
+  function autosave(requestId = request?.id) {
+    if (!requestId) return
+    clearTimers(requestId, 'save')
+    const revision = saves[requestId]?.revision ?? 1
+    saves[requestId] = { phase: 'unsaved', revision }
+    later(requestId, 'save', 420, () => {
+      saves[requestId] = { phase: 'saving', revision }
+      later(requestId, 'save', 520, () => {
+        saves[requestId] = { phase: 'saved', revision: revision + 1 }
       })
     })
   }
 
   function resetTransient() {
-    clearTimers()
     editingBlockId = null
     previewCapture = null
     ramblePhase = 'idle'
-    tidyBusy = false
-    submitting = false
-    savePhase = 'saved'
   }
+
+  // Filters and inbox scope can also select a different request. Only UI-local
+  // state resets; each request keeps ownership of its background operations.
+  $effect(() => {
+    if (request) resetTransient()
+  })
 
   function selectSession(id: string) {
     if (id === session?.id) return
@@ -217,6 +234,7 @@
 
   function commitBlock(id: string, text: string) {
     editingBlockId = null
+    if (!request || readOnly) return
     const current = ensureDocument()
     const block = current.find((item) => item.id === id)
     if (!block || !('text' in block) || block.text === text) return
@@ -243,17 +261,22 @@
 
   function tidySpeech() {
     if (!request || readOnly || tidyBusy || pendingSpeech === 0) return
-    tidyBusy = true
-    later(900, () => {
-      const current = ensureDocument()
+    const owner = request
+    const pending = new Map(ensureDocument(owner)
+      .filter((block) => block.kind === 'speech' && block.pending)
+      .map((block) => [block.id, 'text' in block ? block.text : '']))
+    tidying[owner.id] = true
+    later(owner.id, 'tidy', 900, () => {
+      tidying[owner.id] = false
+      if (['completed', 'cancelled'].includes(effectiveStatus(owner))) return
+      const current = ensureDocument(owner)
       for (const block of current) {
-        if (block.kind === 'speech' && block.pending) {
-          block.text = request.speechTidy || block.text
+        if (block.kind === 'speech' && block.pending && pending.get(block.id) === block.text) {
+          block.text = owner.speechTidy || block.text
           block.pending = false
         }
       }
-      tidyBusy = false
-      autosave()
+      autosave(owner.id)
     })
   }
 
@@ -265,8 +288,8 @@
         : kind === 'clipboard'
           ? { name: 'clipboard-paste.png', mediaType: 'image/png', sizeKiB: 148 }
           : { name: 'notes.md', mediaType: 'text/markdown', sizeKiB: 1.8 }
-    const list = attachments[request.id] ?? (attachments[request.id] = [])
-    if (!list.some((item) => item.name === preset.name)) list.push(preset)
+    const list = attachments[request.id] ?? []
+    if (!list.some((item) => item.name === preset.name)) attachments[request.id] = [...list, preset]
     const current = ensureDocument()
     if (preset.mediaType.startsWith('image/')) {
       current.push({
@@ -286,7 +309,7 @@
   }
 
   function removeAttachment(name: string) {
-    if (!request) return
+    if (!request || readOnly) return
     attachments[request.id] = (attachments[request.id] ?? []).filter((item) => item.name !== name)
     const current = ensureDocument()
     documents[request.id] = current.filter(
@@ -297,14 +320,15 @@
 
   function submitFeedback() {
     if (!request || readOnly || submitting) return
-    submitting = true
-    later(1100, () => {
-      submitting = false
-      overrides[request.id] = { ...overrides[request.id], status: 'completed', delivery: 'pending' }
-      later(700, () => {
-        overrides[request.id] = { ...overrides[request.id], status: 'completed', delivery: 'sending' }
-        later(900, () => {
-          overrides[request.id] = { ...overrides[request.id], status: 'completed', delivery: 'delivered' }
+    const requestId = request.id
+    submissions[requestId] = true
+    later(requestId, 'submit', 1100, () => {
+      submissions[requestId] = false
+      overrides[requestId] = { ...overrides[requestId], status: 'completed', delivery: 'pending' }
+      later(requestId, 'submit', 700, () => {
+        overrides[requestId] = { ...overrides[requestId], status: 'completed', delivery: 'sending' }
+        later(requestId, 'submit', 900, () => {
+          overrides[requestId] = { ...overrides[requestId], status: 'completed', delivery: 'delivered' }
         })
       })
     })
@@ -312,6 +336,10 @@
 
   function cancelFeedback() {
     if (!request || readOnly) return
+    clearTimers(request.id)
+    submissions[request.id] = false
+    tidying[request.id] = false
+    saves[request.id] = { phase: 'saved', revision: saves[request.id]?.revision ?? 1 }
     overrides[request.id] = { ...overrides[request.id], status: 'cancelled', delivery: 'none' }
     resetTransient()
   }
@@ -334,10 +362,11 @@
     packageOpen = {}
     versions = {}
     activeActions = {}
+    submissions = {}
+    tidying = {}
+    saves = {}
     briefOpen = true
     blockSeq = 0
-    savePhase = 'saved'
-    savedRevision = 1
     resetTransient()
   }
 

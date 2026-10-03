@@ -1,12 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import type { DiffReviewAnchor, DiffReviewFile } from '../../generated/feedback'
-import { anchorIncludesLine, diffAnchorOffset, diffFileLabel, diffFileMetadata, diffWindow, parseReviewDiff, validDiffAnchor } from './diffModel'
+import { anchorIncludesLine, diffAnchorOffset, diffFileLabel, diffFileMetadata, diffWindow, parseReviewDiff, splitDiffRows, validDiffAnchor } from './diffModel'
 
 const diff = 'diff --git a/code.ts b/code.ts\n--- a/code.ts\n+++ b/code.ts\n@@ -10,3 +20,4 @@ function\n context\n---looks like a header\n+++looks like a header\n+inserted\n tail\n@@ -40 +51 @@\n-old\n+new\n'
 const file: DiffReviewFile = { id: 'code', old_path: 'code.ts', new_path: 'code.ts', diff }
 const anchor = (side: 'old' | 'new', start: number | null, end = start, hunk = 0): DiffReviewAnchor => ({ file_id: 'code', hunk_index: hunk, side, start_line: start, end_line: end })
 
 describe('immutable unified diff model', () => {
+  it('pairs unequal replacement runs without fabricating lines or changing side coordinates', () => {
+    const lines = parseReviewDiff('@@ -5,3 +8,4 @@\n context\n-old one\n-old two\n+new one\n+new two\n+new three')![0].lines
+    const source = JSON.stringify(lines)
+    expect(splitDiffRows(lines).map((row) => [row.old?.oldLine ?? null, row.new?.newLine ?? null])).toEqual([
+      [5, 8], [6, 9], [7, 10], [null, 11],
+    ])
+    expect(JSON.stringify(lines)).toBe(source)
+    const marker = parseReviewDiff('@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n\\ No newline at end of file')![0].lines
+    expect(splitDiffRows(marker).filter((row) => row.old?.kind === 'header')).toHaveLength(2)
+    expect(splitDiffRows(marker).flatMap((row) => [row.old?.oldLine, row.new?.newLine]).filter((line) => line != null)).toEqual([1, 1])
+  })
   it('retains actual old/new coordinates, header-looking body lines and metadata', () => {
     const hunks = parseReviewDiff(diff)!
     expect(hunks.map((hunk) => [hunk.index, hunk.old, hunk.new])).toEqual([

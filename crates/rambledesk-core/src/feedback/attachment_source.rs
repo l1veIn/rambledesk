@@ -18,7 +18,7 @@ pub(super) fn load_request_attachment(
         attachment.path.as_deref(),
     ) {
         (Some(markdown), None, None) => load_inline_markdown(file_name, markdown),
-        (None, Some(encoded), None) => load_inline_image(file_name, encoded),
+        (None, Some(encoded), None) => load_inline_binary(file_name, encoded),
         (None, None, Some(path)) => load_path_attachment(file_name, path),
         _ => Err(ApplicationError::invalid_argument(
             "each attachment must provide exactly one of markdown, contents_base64, or path",
@@ -38,7 +38,7 @@ fn load_inline_markdown(
     ))
 }
 
-fn load_inline_image(
+fn load_inline_binary(
     file_name: String,
     encoded: &str,
 ) -> Result<(String, Vec<u8>, String), ApplicationError> {
@@ -47,7 +47,7 @@ fn load_inline_image(
             "attachment contents_base64 must be valid standard base64",
         )
     })?;
-    classify_image(file_name, contents)
+    classify_binary(file_name, contents)
 }
 
 fn load_path_attachment(
@@ -81,16 +81,21 @@ fn load_path_attachment(
     if is_markdown_file_name(&file_name) {
         return Ok((file_name, contents, "text/markdown".to_owned()));
     }
-    classify_image(file_name, contents)
+    classify_binary(file_name, contents)
 }
 
-fn classify_image(
+fn classify_binary(
     file_name: String,
     contents: Vec<u8>,
 ) -> Result<(String, Vec<u8>, String), ApplicationError> {
+    if let Some(media_type) =
+        crate::workspace::media::detect_playable_media_type(&contents, &file_name)
+    {
+        return Ok((file_name, contents, media_type.to_owned()));
+    }
     let media_type = detect_image_media_type(&contents).ok_or_else(|| {
         ApplicationError::invalid_argument(
-            "path and base64 attachments must be PNG, JPEG, GIF, or WebP images unless file_name ends with .md or .markdown",
+            "path and base64 attachments must be supported image or audio/video containers with matching filenames, unless file_name ends with .md or .markdown",
         )
     })?;
     Ok((

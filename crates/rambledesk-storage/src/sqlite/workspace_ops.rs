@@ -349,8 +349,8 @@ impl SqliteFeedbackStore {
         request_id: &str,
         attachment_id: &str,
     ) -> Result<Vec<u8>, RepositoryError> {
-        let path: String = sqlx::query_scalar(
-            "SELECT COALESCE(published_path, draft_path) FROM request_attachments \
+        let row = sqlx::query(
+            "SELECT COALESCE(published_path, draft_path) AS path, media_type, byte_size, sha256 FROM request_attachments \
              WHERE request_id = ?1 AND id = ?2",
         )
         .bind(request_id)
@@ -359,6 +359,28 @@ impl SqliteFeedbackStore {
         .await
         .map_err(storage_error)?
         .ok_or(RepositoryError::AttachmentNotFound)?;
+        let path: String = row.try_get("path").map_err(storage_error)?;
+        let media_type: String = row.try_get("media_type").map_err(storage_error)?;
+        if media_type.starts_with("audio/") || media_type.starts_with("video/") {
+            use tokio::io::AsyncReadExt;
+            let size: i64 = row.try_get("byte_size").map_err(storage_error)?;
+            let expected: String = row.try_get("sha256").map_err(storage_error)?;
+            if size <= 0 || size as u64 > rambledesk_core::MAX_ATTACHMENT_BYTES as u64 {
+                return Err(RepositoryError::CorruptData);
+            }
+            let file = tokio::fs::File::open(path).await.map_err(storage_error)?;
+            let mut contents = Vec::with_capacity(size as usize);
+            file.take(rambledesk_core::MAX_ATTACHMENT_BYTES as u64 + 1)
+                .read_to_end(&mut contents)
+                .await
+                .map_err(storage_error)?;
+            if contents.len() as u64 != size as u64
+                || hex::encode(Sha256::digest(&contents)) != expected
+            {
+                return Err(RepositoryError::CorruptData);
+            }
+            return Ok(contents);
+        }
         tokio::fs::read(path).await.map_err(storage_error)
     }
 

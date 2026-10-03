@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 mod attachments;
 #[cfg(feature = "workbench-fixtures")]
 mod rating_review;
+mod table_media;
 mod terminal;
 mod visual_diff;
 mod web_review;
@@ -58,7 +59,13 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
     ];
     #[cfg(feature = "workbench-fixtures")]
     expected.push("rating_review");
-    expected.extend(["sort", "visual_feedback", "diff_review"]);
+    expected.extend([
+        "sort",
+        "visual_feedback",
+        "diff_review",
+        "table_review",
+        "media_review",
+    ]);
     assert_eq!(
         catalog
             .workbenches

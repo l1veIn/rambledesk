@@ -14,8 +14,8 @@ export type WorkbenchSpec = { type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | TerminalData | RatingReviewData | SortData | VisualFeedbackData | DiffReviewData | Record<string, unknown>;
-export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, } | { "type": "terminal", sessions: Array<TerminalTrialSession>, } | { "type": "rating_review" } & RatingReviewState | { "type": "sort" } & SortState | { "type": "visual_feedback" } & VisualFeedbackState | { "type": "diff_review" } & DiffReviewState;
+export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | TerminalData | RatingReviewData | SortData | VisualFeedbackData | DiffReviewData | TableReviewData | MediaReviewData | Record<string, unknown>;
+export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, } | { "type": "terminal", sessions: Array<TerminalTrialSession>, } | { "type": "rating_review" } & RatingReviewState | { "type": "sort" } & SortState | { "type": "visual_feedback" } & VisualFeedbackState | { "type": "diff_review" } & DiffReviewState | { "type": "table_review" } & TableReviewState | { "type": "media_review" } & MediaReviewState;
 export type WorkbenchPackage = {
 /**
  * None for cancellation or an unavailable structured document.
@@ -25,7 +25,7 @@ result: WorkbenchResult | null, type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | TerminalResult | RatingReviewResult | SortResult | VisualFeedbackResult | DiffReviewResult | Record<string, unknown>;
+export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | TerminalResult | RatingReviewResult | SortResult | VisualFeedbackResult | DiffReviewResult | TableReviewResult | MediaReviewResult | Record<string, unknown>;
 export type RambleData = { actions: Array<ActionInput>, };
 export type QuestionsData = { questions: Array<Question>, };
 export type Question = { id: string, prompt: string, label?: string, options: Array<QuestionOption>, allowOther: boolean, };
@@ -195,6 +195,50 @@ export type DiffReviewComment = { id: string, anchor: DiffReviewAnchor,
 body: string, };
 export type DiffReviewState = { comments: Array<DiffReviewComment>, };
 export type DiffReviewResult = { source_version: string, comments: Array<DiffReviewComment>, };
+export type TableReviewData = { title: string, source_version: string, columns: Array<TableReviewColumn>,
+/**
+ * At most 20000 cells and 500000 Unicode scalars across all original values.
+ */
+rows: Array<TableReviewRow>, };
+export type TableReviewColumn = { id: string, label: string, };
+export type TableReviewRow = { id: string,
+/**
+ * Strings in immutable column order; each may be empty, at most 4000 scalars.
+ */
+cells: Array<string>, };
+export type TableReviewChange = { row_id: string, column_id: string,
+/**
+ * Suggested literal value, including an empty string to clear the cell.
+ */
+value: string, };
+export type TableReviewComment = { id: string, row_id: string, column_id: string,
+/**
+ * Markdown with shared attachment references; drafts may be empty.
+ */
+body: string, };
+export type TableReviewState = { changes: Array<TableReviewChange>, comments: Array<TableReviewComment>, };
+export type TableReviewResult = { source_version: string, changes: Array<TableReviewChange>, comments: Array<TableReviewComment>, };
+export type MediaReviewKind = "audio" | "video";
+export type MediaReviewData = { title: string, source_version: string, media_kind: MediaReviewKind,
+/**
+ * Exact unique file_name of a frozen request attachment, at most 20 MiB.
+ */
+media_file_name: string,
+/**
+ * Declared immutable timebase; the player reports mismatched or unsupported material.
+ */
+duration_ms: number, };
+export type MediaReviewComment = { id: string, start_ms: number,
+/**
+ * Null for a time point; otherwise strictly later than start_ms, at most duration_ms.
+ */
+end_ms: number | null,
+/**
+ * Markdown with shared attachment references; drafts may be empty.
+ */
+body: string, };
+export type MediaReviewState = { comments: Array<MediaReviewComment>, };
+export type MediaReviewResult = { source_version: string, duration_ms: number, comments: Array<MediaReviewComment>, };
 export type TerminalSessionStatus = "running" | "exited" | "stopped";
 export type OpenTerminalSessionInput = { request_id: string, cols: number, rows: number, };
 export type TerminalSessionInput = { request_id: string, session_id: string, };

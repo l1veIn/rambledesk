@@ -558,6 +558,7 @@ fn validate_optional_search(search: Option<String>) -> Result<Option<String>, Ap
     Ok(Some(search))
 }
 
+pub(crate) mod media;
 pub(crate) mod validation;
 
 use validation::{

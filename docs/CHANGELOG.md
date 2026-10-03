@@ -16,12 +16,12 @@
 
 ---
 
-## Unreleased
+## v0.5.0-rc.1
 
-Changes in development after RambleDesk 0.4.0
+RambleDesk 0.5.0-rc.1 — release candidate
 
 Human feedback workbenches
-- Eight production workbench types cover free feedback, questions, document review, web review, terminal trials, drag sorting, visual feedback, and diff review. Use a single question for new single-choice requests; existing single_choice requests keep their original contracts and results.
+- Ten production workbench types cover free feedback, questions, document review, web review, terminal trials, drag sorting, visual feedback, diff review, table review, and media review. Use a single question for new single-choice requests; existing single_choice requests keep their original contracts and results.
 - Feedback text, custom answers, and review comments share voice, paste, screenshot, attachment, and speech-tidying input. Each input stays with the request and field where it started; drafts save text and structured state together.
 - Document review keeps the source unchanged, supports continuing paragraph comments and suggested wording, and requires an explicit review decision. Paragraph removal is a reversible suggestion.
 - Web review opens the actual page, captures element comments, and keeps the same page and draft when moving between ordinary and expanded tabs. Cross-origin development pages must load the review bridge and permit embedding.
@@ -29,8 +29,10 @@ Human feedback workbenches
 - Terminal appearance offers four color presets. Changes apply immediately, preserve the running trial, and share a saved preference across ordinary, expanded, and history views.
 - Drag sorting supports keyboard and pointer reordering, label edits, deletion and restoration. Submitted results keep final labels, order, and deleted IDs; sorting stays in the ordinary view.
 - Visual feedback supports freehand strokes, arrows, rectangles, and text on a saved image or blank canvas. Drafts retain editable annotations; submission saves a composed PNG and structured feedback.
-- Diff review attaches comments to old or new lines, line ranges, or hunks in an immutable file diff. Overall feedback shares the ordinary submission flow without imposing an approval workflow.
-- Web review, terminal trials, visual feedback, and diff review now offer five-step first-use guides and a Show guide entry. Guides wait for the workbench view and explain controls without changing the draft, creating annotations or comments, or starting a terminal.
+- Diff review offers GitHub-style file navigation, unified and split views, inline comments, and expanded tabs including read-only history. Comments attach to old or new lines, line ranges, or hunks in an immutable file diff; file-viewed progress is local presentation state. Overall feedback shares the ordinary submission flow without imposing an approval workflow.
+- Table review uses a spreadsheet grid with stable row and column identities, keyboard navigation, suggested cell values, and cell comments. The frozen source remains unchanged; submitted results preserve suggestions and comments separately.
+- Media review uses an audio/video player, timeline points and ranges, and a comment sidebar. Commenting pauses playback; selecting a comment seeks to its timestamp. Saved media uses the existing 20 MiB attachment limit, with explicit load and codec errors and no automatic playback.
+- Free feedback, document review, web review, terminal trials, visual feedback, diff review, table review, and media review offer five-step first-use guides and a Show guide entry. Guides explain controls without changing drafts, creating comments, starting a terminal, or playing media. Diff review's updated guide has its own new guide version.
 
 Workspace and extension development
 - Request context and materials stay above the workbench's scrolling content. The feedback column shares one draft and submission flow with every type.
@@ -45,11 +47,13 @@ Agent feedback continuation
 
 Acceptance boundaries
 - Playground preparation validates required attachment names before creating a run. Visual, diff, sorting, and development rating fixtures now include file_name; image references retain the exact saved attachment name.
-- The playground covers eight production types in ten scenarios, including blank-canvas drawing and image annotation, followed by a summary request. Preview fixtures and automated checks do not establish microphone, screenshot, physical-phone, or cross-platform PTY compatibility.
-- The typed workbench framework and this round of specialized workbenches are source development after the published 0.4.0 release, which retains its existing Ramble workflow. Release version, platform artifacts, and installation acceptance will be recorded for the next release.
+- The playground covers ten production types in thirteen scenarios, including blank-canvas drawing, image annotation, table review, and separate audio/video reviews, followed by a summary request. Existing runs retain their saved stages and request IDs. Preview fixtures and automated checks do not establish microphone, screenshot, physical-phone, codec support on every platform, or cross-platform PTY compatibility.
+- This is a test release after 0.4.0, not the stable updater target. Windows ships an NSIS installer with a Tauri updater signature; Authenticode is not enabled. Apple Silicon macOS ships an ad-hoc signed DMG without notarization or automatic updates. Follow the README first-launch instructions.
+- Back up the complete data set before upgrading. Database extensions advance from 20 to 22; 0.4.0 refuses the upgraded database. To roll back, close the app and restore the pre-upgrade backup; do not delete migration records. See docs/DATA_COMPATIBILITY.md.
+- Fixed table edits losing unsaved text on double-click, failed or unfinished agent tools appearing as file changes, Windows UNC terminal working directories, generated playground attachment names, and the website demo becoming stuck while publishing.
 
 中文摘要
-- 新增八种正式工作台：自由反馈、逐项问答、文稿审阅、网页评审、终端试用、拖动排序、视觉反馈和差异评审。新单选使用单题问答，旧 single_choice 请求保留原合同与结果。
+- 新增十种正式工作台：自由反馈、逐项问答、文稿审阅、网页评审、终端试用、拖动排序、视觉反馈、差异评审、表格评审和媒体评审。新单选使用单题问答，旧 single_choice 请求保留原合同与结果。
 - 正文、答案和批注共享语音、粘贴、截图、附件与语音整理；已开始的输入固定原请求和字段，正文与结构化状态共同保存。
 - 文稿审阅保留原稿，支持批注续写、建议改写、可恢复删除线和显式整稿判断；网页评审保留真实网页、元素意见及普通/全屏页签往返状态，跨源开发页需接入 bridge 并允许嵌入。
 - 终端运行在后端主机，主动开始或重启，每请求最多保存 16 轮，选中输出可引用到正文，提交前停止并收尾输出。排序支持拖动、键盘、名称编辑、删除与恢复，结果保留最终名称、顺序及删除 ID，普通视图无全屏入口。
@@ -60,7 +64,11 @@ Acceptance boundaries
 - 可选引导在各工作台现有 definition 中声明，共享引导组件直接读取，保留首次使用记录，无需独立类型名单或引导文件。
 - 提交反馈后由后台初始化或恢复原 ACP 会话，无需先打开 Agent 页面；慢连接不阻塞其他会话，启动失败保留原因并等待显式重试。当前运行实例中显式停止托管会话后旧队列不自行重启，新提交或显式连接可恢复投递，权限等交互仍由用户作答。
 - Playground 准备流程在创建轮次前验证附件必填名称；补齐视觉反馈、差异评审、排序及开发评分样例的 file_name，图片引用与附件保存名精确匹配。
-- Playground 用十个场景覆盖八种正式类型，分别体验空白画布和图片批注，再以汇总请求收尾；自动化与预览不能替代真实设备验收。类型化框架与本轮专用工作台扩展属于 0.4.0 之后的源码开发，已发布的 0.4.0 保留既有 Ramble 流程。
+- 表格评审保留原始值，分别记录单元格建议与批注；媒体评审支持音视频的时间点和区间意见，主动播放，评论时暂停，材料上限 20 MiB。
+- Playground 用十三个场景覆盖十种正式类型，分别体验空白画布、图片批注、表格及音频/视频，再以汇总请求收尾；自动化与预览不能替代真实设备验收。
+- 本版本为候选测试版，不替换稳定更新目标。Windows 提供 NSIS 与 Tauri updater 签名，尚无 Authenticode；Apple Silicon DMG 使用 ad-hoc 签名，尚未公证、不支持应用内更新，首次打开按 README 操作。
+- 升级前备份完整资料。数据库扩展由 20 升到 22，0.4.0 会拒绝打开新数据库；回退必须退出应用并恢复升级前备份，不删除迁移记录。详见 docs/DATA_COMPATIBILITY.md。
+- 修复表格双击丢失未保存文本、失败或未完成工具被统计为文件改动、Windows UNC 终端目录、脚手架附件名称缺失及官网演示发布状态卡住。
 
 ## v0.4.0
 

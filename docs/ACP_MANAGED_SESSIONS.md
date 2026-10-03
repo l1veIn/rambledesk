@@ -65,7 +65,7 @@ RambleDesk 通过 ACP 管理本机外部智能体的会话；智能体负责推�
 
 每条真实用户 prompt 和反馈续接 prompt 都前置运行时工作流说明，不进入用户消息历史，不修改全局 Skills；准备阶段不发送说明。默认所有用户结果，包括只读分析和总结，都通过 Ramble 交接。正常结束且未尝试反馈时，公共驱动只追加一次交接提醒；已尝试失败或提醒后仍未交接，则保留回答并显示错误。用户取消不触发提醒，模型不能自行猜测用户已批准任务完成。读取批准或取消终态可确认本轮结束；普通反馈后的下一轮仍需交接。
 
-会话中的「内置会话指令」入口可查看当前连接（断线后为最近一次连接）实际附加的工作流说明，不是所有历史回合的快照。它与聊天历史分开，不能据此推断 Agent 自身的系统提示词或全局 Skills。工作台按本次需要的用户输入选择：开放体验用 `ramble`，明确作答或选择用 `questions`，文稿段落批注用 `document_review`，真实网页元素意见用 `web_review`，CLI 试用用 `terminal`，条目优先级及名称调整用 `sort`，图片圈画或空白画布描绘用 `visual_feedback`，diff 行与改动块批注用 `diff_review`。具体接入条件见[工作台文档](workbench/README.md)，最终以运行时发现返回的 schema 为准，旧 `single_choice` 仅保留兼容。
+会话中的「内置会话指令」入口可查看当前连接（断线后为最近一次连接）实际附加的工作流说明，不是所有历史回合的快照。它与聊天历史分开，不能据此推断 Agent 自身的系统提示词或全局 Skills。工作台按本次需要的用户输入选择：开放体验用 `ramble`，明确作答或选择用 `questions`，文稿段落批注用 `document_review`，真实网页元素意见用 `web_review`，CLI 试用用 `terminal`，条目优先级及名称调整用 `sort`，图片圈画或空白画布描绘用 `visual_feedback`，diff 行与改动块批注用 `diff_review`，单元格改值建议与批注用 `table_review`，音视频时间点或区间意见用 `media_review`。具体接入条件见[工作台文档](workbench/README.md)，最终以运行时发现返回的 schema 为准，旧 `single_choice` 仅保留兼容。
 
 Agent 必须用自己的执行工具调用命令，bridge 必须保留运行时环境，沙箱必须允许本地 IPC。RambleDesk 不宣告 ACP 客户端文件系统或终端执行能力。托管路径不注入 MCP server 或 Pi 托管扩展；Agent 原有 MCP、Skills 和插件仍按其自身配置加载。
 

@@ -113,3 +113,24 @@ export function diffWindow(hunks: readonly ReviewDiffHunk[], start: number, size
     return from < to ? [{ ...hunk, lines: hunk.lines.slice(from, to) }] : []
   })
 }
+
+export type SplitDiffRow = { old: DiffLine | null; new: DiffLine | null }
+
+/** Pair adjacent changed runs for display; keep each side's immutable source coordinates. */
+export function splitDiffRows(lines: readonly DiffLine[]): SplitDiffRow[] {
+  const rows: SplitDiffRow[] = []
+  let removed: DiffLine[] = [], added: DiffLine[] = []
+  function flush() {
+    for (let index = 0; index < Math.max(removed.length, added.length); index += 1) {
+      rows.push({ old: removed[index] ?? null, new: added[index] ?? null })
+    }
+    removed = []; added = []
+  }
+  for (const line of lines) {
+    if (line.kind === 'deletion') removed.push(line)
+    else if (line.kind === 'addition') added.push(line)
+    else { flush(); rows.push({ old: line, new: line }) }
+  }
+  flush()
+  return rows
+}

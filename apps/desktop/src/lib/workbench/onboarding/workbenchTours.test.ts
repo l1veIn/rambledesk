@@ -28,12 +28,15 @@ describe('workbench guides', () => {
     expect(definition.guide!.steps[0].title).toEqual(['查看材料', 'Read the source'])
   })
 
-  it.each(['ramble', 'document_review', 'web_review', 'terminal', 'visual_feedback', 'diff_review'])('keeps %s step identity stable across locale changes', (type) => {
+  it.each([
+    ['ramble', 1], ['document_review', 1], ['web_review', 1], ['terminal', 1],
+    ['visual_feedback', 1], ['diff_review', 2], ['table_review', 1], ['media_review', 1],
+  ] as const)('keeps %s step identity stable across locale changes', (type, version) => {
     const definition = getWorkbenchDefinition(type)!
     const chinese = getWorkbenchTour(definition, 'zh-CN')!
     const english = getWorkbenchTour(definition, 'en')!
     expect(chinese.id).toBe(type)
-    expect(chinese.version).toBe(1)
+    expect(chinese.version).toBe(version)
     expect(chinese.steps).toHaveLength(5)
     expect(chinese.steps.map(({ id, target }) => ({ id, target })))
       .toEqual(english.steps.map(({ id, target }) => ({ id, target })))

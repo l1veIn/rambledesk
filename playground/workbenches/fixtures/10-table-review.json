@@ -1,0 +1,23 @@
+{
+  "title": "表格审阅",
+  "what_happened": "请审阅仓库中六个工作台的实际引导配置清单快照，按单元格提出改值建议或批注，检查键盘操作、原值对照、语音首笔、全屏恢复与提交结果。",
+  "workbench": {
+    "type": "table_review", "version": 1,
+    "data": {
+      "title": "工作台引导配置清单", "source_version": "repository-guides-2026-10-03",
+      "columns": [
+        { "id": "workbench", "label": "工作台类型" }, { "id": "guide_version", "label": "引导版本" },
+        { "id": "steps", "label": "引导步骤数" }, { "id": "definition", "label": "配置文件" }
+      ],
+      "rows": [
+        { "id": "ramble", "cells": ["ramble", "1", "5", "apps/desktop/src/lib/workbench/definitions/ramble/definition.ts"] },
+        { "id": "document_review", "cells": ["document_review", "1", "5", "apps/desktop/src/lib/workbench/definitions/document_review/definition.ts"] },
+        { "id": "web_review", "cells": ["web_review", "1", "5", "apps/desktop/src/lib/workbench/definitions/web_review/definition.ts"] },
+        { "id": "terminal", "cells": ["terminal", "1", "5", "apps/desktop/src/lib/workbench/definitions/terminal/definition.ts"] },
+        { "id": "visual_feedback", "cells": ["visual_feedback", "1", "5", "apps/desktop/src/lib/workbench/definitions/visual_feedback/definition.ts"] },
+        { "id": "diff_review", "cells": ["diff_review", "2", "5", "apps/desktop/src/lib/workbench/definitions/diff_review/definition.ts"] }
+      ]
+    }
+  },
+  "attachments": [{ "file_name": "table-review.md", "path": "materials/table-review.md" }]
+}

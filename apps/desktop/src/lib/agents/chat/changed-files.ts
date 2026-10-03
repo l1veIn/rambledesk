@@ -105,7 +105,8 @@ function pathsForTool(tool: SessionToolCall): string[] {
 
 function changedByTool(activity: SessionActivity, byPath: Map<string, Accumulated>, order: string[]) {
   const tool = activityTool(activity)
-  if (!tool) return
+  // Input paths and proposed diffs can exist before a tool succeeds.
+  if (!tool || tool.status !== 'completed') return
 
   const ensure = (path: string): Accumulated => {
     const normalized = normalizePath(path)

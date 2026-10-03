@@ -70,6 +70,14 @@ beforeEach(() => {
     <div data-diff-source>Original diff</div>
     <div data-tour="diff-selection"><button disabled>Add comment</button></div>
     <div data-tour="diff-comments">No comments yet</div>
+    <div data-tour="table-grid">Original table</div>
+    <div data-tour="table-selection"><button>Suggest a value</button></div>
+    <div data-tour="table-comments">No cell comments yet</div>
+    <div data-tour="table-review-toolbar"><button>Full screen table</button></div>
+    <div data-tour="media-player"><button>Play media</button></div>
+    <div data-tour="media-timeline">Timeline</div>
+    <div data-tour="media-selection"><button>Add time comment</button></div>
+    <div data-tour="media-comments">No time comments yet</div>
     <button data-feedback-actions>Submit feedback</button>
   `
   document.body.append(scope)
@@ -100,21 +108,21 @@ function open(initial: { kind?: string; definition?: GuideDefinition | null; req
 }
 
 describe('workbench first-use guide', () => {
-  it.each(['ramble', 'visual_feedback', 'diff_review'])('opens %s on the first editable visit and remembers an explicit skip across requests', async (kind) => {
+  it.each(['ramble', 'visual_feedback', 'diff_review', 'table_review', 'media_review'])('opens %s on the first editable visit and remembers an explicit skip across requests', async (kind) => {
     const state = open({ kind })
     const tour = getWorkbenchTour(getWorkbenchDefinition(kind), 'en')!
     await vi.waitFor(() => expect(dialog()?.textContent).toContain(tour.steps[0].title))
     expect(dialog()?.textContent).toContain('Step 1 of 5')
-    expect(seen.store!.hasSeen(tour.id, 1)).toBe(false)
+    expect(seen.store!.hasSeen(tour.id, tour.version)).toBe(false)
     button('Skip guide').click()
     await vi.waitFor(() => expect(dialog()).toBeNull())
-    expect(JSON.parse(localStorage.getItem(`rambledesk.workbench-tour.${kind}`)!)).toEqual({ version: 1 })
+    expect(JSON.parse(localStorage.getItem(`rambledesk.workbench-tour.${kind}`)!)).toEqual({ version: tour.version })
     state.update((current) => ({ ...current, requestId: 'request-2' }))
     await tick()
     expect(dialog()).toBeNull()
   })
 
-  it.each(['document_review', 'web_review', 'terminal', 'visual_feedback', 'diff_review'])('navigates %s without clicking or changing the underlying workbench', async (kind) => {
+  it.each(['document_review', 'web_review', 'terminal', 'visual_feedback', 'diff_review', 'table_review', 'media_review'])('navigates %s without clicking or changing the underlying workbench', async (kind) => {
     const businessAction = vi.fn()
     scope.querySelectorAll('button').forEach((element) => element.addEventListener('click', businessAction))
     open({ kind })
@@ -130,7 +138,7 @@ describe('workbench first-use guide', () => {
     }
     button('Get started').click()
     await vi.waitFor(() => expect(dialog()).toBeNull())
-    expect(seen.store!.hasSeen(tour.id, 1)).toBe(true)
+    expect(seen.store!.hasSeen(tour.id, tour.version)).toBe(true)
     expect(businessAction).not.toHaveBeenCalled()
     expect(scope.querySelector('input')!.value).toBe('Existing feedback')
     expect(scope.querySelector('[data-review-text]')!.textContent).toBe('Original paragraph')
@@ -175,7 +183,7 @@ describe('workbench first-use guide', () => {
 
   it.each(['visual_feedback', 'diff_review'] as const)('replays the completed %s guide without consuming the other new workbench first use', async (kind) => {
     const otherKind = kind === 'visual_feedback' ? 'diff_review' : 'visual_feedback'
-    seen.store!.markSeen(kind, 1)
+    seen.store!.markSeen(kind, getWorkbenchTour(getWorkbenchDefinition(kind), 'en')!.version)
     seen.store = createWorkbenchTourSeenStore()
     const state = open({ kind })
     await tick()

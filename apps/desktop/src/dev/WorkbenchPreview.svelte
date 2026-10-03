@@ -26,7 +26,8 @@
   import { previewHostProfile } from './agentPreviewFixtures'
   import { workbenchExamples, workbenchPreviewAttachments, workbenchPreviewLabels, workbenchPreviewWorkspace } from './workbenchPreviewFixtures'
   import { TerminalPreviewRuntime } from '$lib/preview/terminalPreviewFixture'
-  import { findWorkbenchExample, registeredWorkbenchExamples } from '$lib/workbench/definitions/examples'
+  import { findWorkbenchExample, registeredWorkbenchExamples, workbenchExampleKey } from '$lib/workbench/definitions/examples'
+  import { getWorkbenchDefinition } from '$lib/workbench/definitions/registry'
 
   const initialType = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('type') : null
   let index = initialType === 'single_question' ? 2 : Math.max(0, registeredWorkbenchExamples.indexOf(findWorkbenchExample(initialType)!))
@@ -148,11 +149,8 @@
     {#each workbenchExamples as example, i}
       <button type="button" aria-pressed={index === i} onclick={() => choose(i)} class="rounded-md border px-4 py-2 text-sm aria-pressed:bg-primary aria-pressed:text-primary-foreground">{workbenchPreviewLabels[i]}</button>
     {/each}
-    {#if workspace.workbench?.type === 'web_review'}
-      <a class="rounded-md border px-3 py-2 text-sm" href="/?preview=fixtures&workspace=web_review" target="_blank" rel="noopener noreferrer">在完整应用中体验网页评审</a>
-    {/if}
-    {#if workspace.workbench?.type === 'terminal'}
-      <a class="rounded-md border px-3 py-2 text-sm" href="/?preview=fixtures&workspace=terminal" target="_blank" rel="noopener noreferrer">在完整应用中体验终端工作台</a>
+    {#if workspace.workbench && getWorkbenchDefinition(workspace.workbench.type)?.layout.expanded}
+      <a class="rounded-md border px-3 py-2 text-sm" href={`/?preview=fixtures&workspace=${encodeURIComponent(workbenchExampleKey(registeredWorkbenchExamples[index]))}`} target="_blank" rel="noopener noreferrer">在完整应用中体验全屏页签</a>
     {/if}
     <span class="ml-auto text-xs text-muted-foreground">交互预览 · 内容只保存在本页内存中</span>
   </nav>

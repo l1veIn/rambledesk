@@ -41,20 +41,33 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def resolved_path(path):
+    # Resolve symlinks and traversal before comparing aliases. Rust canonicalize
+    # emits Windows extended paths while the launcher uses ordinary paths.
+    resolved = Path(path).resolve()
+    if os.name == "nt":
+        value = str(resolved)
+        if value.startswith("\\\\?\\UNC\\"):
+            return Path("\\\\" + value[8:])
+        if value.startswith("\\\\?\\"):
+            return Path(value[4:])
+    return resolved
+
+
 def load_manifest(path):
     manifest = read_json(path)
     require(manifest.get("fixture") == FIXTURE, "Not a feedback acceptance fixture manifest")
-    directory = Path(manifest["directory"]).resolve()
+    directory = resolved_path(manifest["directory"])
     require(directory.name.startswith("rambledesk-feedback-acceptance-"), "Unexpected fixture directory")
-    require(Path(path).resolve() == directory / "acceptance.json", "Manifest path mismatch")
+    require(resolved_path(path) == directory / "acceptance.json", "Manifest path mismatch")
     for key, name in [("database", "validation.sqlite3"), ("stopFile", "stop-fixture"), ("tokenFile", "durable-token.txt")]:
-        require(Path(manifest[key]).resolve() == directory / name, f"Unexpected {key}")
+        require(resolved_path(manifest[key]) == directory / name, f"Unexpected {key}")
     if "logFile" in manifest:
         require(isinstance(manifest["logFile"], str), "Unexpected launcher log path")
         log = Path(manifest["logFile"])
         # start() uses mkstemp directly in this root. Resolve the parent to allow
         # platform aliases such as macOS /var -> /private/var, never a file link.
-        require(log.is_absolute() and log.parent.resolve() == Path(tempfile.gettempdir()).resolve(),
+        require(log.is_absolute() and resolved_path(log.parent) == resolved_path(tempfile.gettempdir()),
                 "Unexpected launcher log directory")
         require(re.fullmatch(r"rambledesk-feedback-acceptance-[a-z0-9_]{8}\.log", log.name),
                 "Unexpected launcher log filename")
@@ -141,8 +154,8 @@ class Application:
 
 
 def package_file(directory, relative):
-    path = (directory / relative).resolve()
-    require(path.is_relative_to(directory.resolve()), "Package manifest path escaped its directory")
+    path = resolved_path(directory / relative)
+    require(path.is_relative_to(resolved_path(directory)), "Package manifest path escaped its directory")
     return path
 
 
@@ -163,7 +176,7 @@ def verify(args):
     app = None if args.offline else Application(manifest)
     evidence = {"fixture": FIXTURE, "sourceHead": manifest.get("sourceHead"), "url": manifest["url"], "requests": []}
     published = 0
-    database_path = Path(manifest["database"]).resolve()
+    database_path = resolved_path(manifest["database"])
     wal_path = Path(str(database_path) + "-wal")
     # Offline callers must have stopped every writer. A retained nonempty WAL
     # still contains durable facts: immutable would silently ignore them.
@@ -193,7 +206,7 @@ def verify(args):
             if result:
                 published += 1
                 directory = Path(result["directory_path"])
-                require(directory.resolve().is_relative_to(Path(manifest["directory"]).resolve()), "Package escaped fixture")
+                require(resolved_path(directory).is_relative_to(resolved_path(manifest["directory"])), "Package escaped fixture")
                 manifest_bytes = Path(result["manifest_path"]).read_bytes()
                 package = json.loads(manifest_bytes)
                 require(digest(manifest_bytes) == result["manifest_sha256"], "Persisted manifest hash mismatch")

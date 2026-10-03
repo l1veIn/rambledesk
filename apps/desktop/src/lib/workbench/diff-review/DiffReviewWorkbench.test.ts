@@ -51,6 +51,38 @@ async function key(node: HTMLElement, value: string, shiftKey = false) {
 }
 
 describe('diff review interactions', () => {
+  it('changes display layout and filters files without rewriting feedback or immutable coordinates', async () => {
+    const app = await open(saved)
+    const original = JSON.stringify(originalData)
+    button('Split').click(); await tick()
+    expect(document.querySelector('[data-diff-source]')?.getAttribute('data-diff-mode')).toBe('split')
+    expect(line('old', 2)).not.toBeNull()
+    expect(line('new', 2)).not.toBeNull()
+    expect(app.onChange).not.toHaveBeenCalled()
+    const search = document.querySelector<HTMLInputElement>('input[type="search"]')!
+    search.value = 'quickstart'; search.dispatchEvent(new Event('input', { bubbles: true })); await tick()
+    expect(document.querySelectorAll('[data-diff-file]')).toHaveLength(1)
+    document.querySelector<HTMLButtonElement>('[data-diff-comment="saved"]')!.click(); await tick()
+    expect(line('new', 2).getAttribute('aria-pressed')).toBe('true')
+    expect(line('new', 3).getAttribute('aria-pressed')).toBe('true')
+    expect(document.querySelector('[data-diff-source]')?.contains(editor())).toBe(true)
+    button('Unified').click(); await tick()
+    expect(inputText(editor())).toBe('Saved comment')
+    expect(app.props.current.state).toEqual(saved)
+    expect(app.onChange).not.toHaveBeenCalled()
+    expect(JSON.stringify(originalData)).toBe(original)
+  })
+  it('uses the line gutter to create a precisely anchored inline comment in split mode', async () => {
+    const app = await open()
+    button('Split').click(); await tick()
+    document.querySelector<HTMLButtonElement>('[aria-label="Comment on Old line 2"]')!.click(); await tick()
+    expect(app.props.current.state?.comments[0].anchor).toMatchObject({ file_id: 'errors', side: 'old', start_line: 2, end_line: 2 })
+    expect(document.querySelector('[data-diff-source]')?.contains(editor())).toBe(true)
+    replaceInputText(editor(), 'Keep this validation.'); await tick()
+    button('Unified').click(); await tick()
+    expect(inputText(editor())).toBe('Keep this validation.')
+    expect(line('old', 2).getAttribute('aria-pressed')).toBe('true')
+  })
   it('exposes guide landmarks before selecting lines without creating comments or changing the source', async () => {
     const original = JSON.stringify(originalData)
     const app = await open()

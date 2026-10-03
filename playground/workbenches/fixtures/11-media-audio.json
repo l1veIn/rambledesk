@@ -1,0 +1,15 @@
+{
+  "title": "音频审阅",
+  "what_happened": "请主动播放这份已冻结的八秒真实提示音材料，按时间点或区间留下意见，检查语音、附件、排序、恢复和历史回看。不会自动播放，不需要审批结论。",
+  "workbench": {
+    "type": "media_review", "version": 1,
+    "data": {
+      "title": "审阅提示音的节奏和响度", "source_version": "playground-media-audio-v1",
+      "media_kind": "audio", "media_file_name": "review-tone.wav", "duration_ms": 8000
+    }
+  },
+  "attachments": [
+    { "file_name": "review-tone.wav", "path": "materials/media/review-tone.wav" },
+    { "file_name": "media-review.md", "path": "materials/media-review.md" }
+  ]
+}

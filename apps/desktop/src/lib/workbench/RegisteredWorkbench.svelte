@@ -42,7 +42,7 @@
     host: { requestId: workspace.request.request_id, controller,
       updateState: (next) => { if (!closed) onStateChange(next) },
       quote: (text) => { if (!closed) onQuote?.(text) },
-      openExpanded: definition?.layout.expanded && !immutable ? onOpenReview : undefined,
+      openExpanded: definition?.layout.expanded ? onOpenReview : undefined,
       selectAction: (id, index, title) => { if (!closed) onSelectAction(id, index, title) },
     },
   } satisfies WorkbenchViewContext

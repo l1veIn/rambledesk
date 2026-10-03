@@ -8,9 +8,9 @@ may persist. The live HTTP/model acceptance tools are documented separately belo
 ## Workbenches and shared input
 
 Open `http://127.0.0.1:1431/workbenches.html`. It discovers examples from the
-workbench registry, covering the eight production types: `ramble`, `questions`,
+workbench registry, covering the ten production types: `ramble`, `questions`,
 `document_review`, `web_review`, `terminal`, `sort`, `visual_feedback`, and
-`diff_review`. Use `?type=questions`, `?type=single_question`, or any registered
+`diff_review`, `table_review`, and `media_review`. Use `?type=questions`, `?type=single_question`, or any registered
 type to select a scenario directly. `single_question` is a preview selector,
 not a workbench contract; `single_choice` is retained only for compatibility
 with saved requests and is not offered for new work.
@@ -19,7 +19,9 @@ with saved requests and is not offered for new work.
 selects the saved-image example. A unique example key selects a specific example,
 while a workbench type selects its first example. To test the complete App with
 its normal controllers, use `/?preview=fixtures&workspace=visual_feedback-image`
-or `workspace=diff_review`. Request images and generated PNG feedback attachments
+or `workspace=diff_review`, `workspace=table_review`, `workspace=media_review-audio`,
+or `workspace=media_review-video`. Expanded types also expose a link from the
+standalone workbench preview to the full application's tab navigation. Request images and generated PNG feedback attachments
 retain their bytes in memory. These previews do not establish backend persistence
 or publication integrity; those remain Rust/HTTP acceptance checks.
 

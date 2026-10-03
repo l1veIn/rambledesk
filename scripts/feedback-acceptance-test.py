@@ -97,6 +97,75 @@ class LauncherStopTests(unittest.TestCase):
                     self.assertTrue(self.stop(log)["stopped"])
 
 
+class PackagePathTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="rambledesk-feedback-acceptance-")
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+        self.package = self.directory / "package"
+        self.package.mkdir()
+        self.inside = self.package / "feedback.md"
+        self.inside.write_text("Feedback", encoding="utf-8")
+        self.sibling = self.directory / "package-other"
+        self.sibling.mkdir()
+        self.outside = self.sibling / "feedback.md"
+        self.outside.write_text("Must remain outside", encoding="utf-8")
+
+    def test_package_paths_use_directory_boundaries(self):
+        self.assertEqual(acceptance.package_file(self.package, "feedback.md"), self.inside.resolve())
+        for outside in ["../package-other/feedback.md", self.outside]:
+            with self.subTest(outside=outside):
+                with self.assertRaisesRegex(RuntimeError, "escaped"):
+                    acceptance.package_file(self.package, outside)
+        self.assertEqual(self.outside.read_text(), "Must remain outside")
+
+    def test_package_symlink_cannot_escape_its_directory(self):
+        link = self.package / "linked.md"
+        try:
+            link.symlink_to(self.outside)
+        except OSError as error:
+            self.skipTest(f"Symlinks unavailable: {error}")
+        with self.assertRaisesRegex(RuntimeError, "escaped"):
+            acceptance.package_file(self.package, link.name)
+        self.assertEqual(self.outside.read_text(), "Must remain outside")
+
+    @unittest.skipUnless(os.name == "nt", "Windows extended path aliases")
+    def test_windows_extended_package_paths_match_without_weakening_containment(self):
+        def extended(path):
+            return Path("\\\\?\\" + str(path.resolve()))
+
+        self.assertEqual(acceptance.resolved_path(extended(self.package)), self.package.resolve())
+        for directory, child in [
+            (extended(self.package), self.inside),
+            (self.package, extended(self.inside)),
+            (extended(self.package), "feedback.md"),
+        ]:
+            with self.subTest(directory=directory, child=child):
+                self.assertEqual(acceptance.package_file(directory, child), self.inside.resolve())
+        for directory, outside in [
+            (extended(self.package), self.outside),
+            (self.package, extended(self.outside)),
+            (extended(self.package), "../package-other/feedback.md"),
+        ]:
+            with self.subTest(directory=directory, outside=outside):
+                with self.assertRaisesRegex(RuntimeError, "escaped"):
+                    acceptance.package_file(directory, outside)
+
+    @unittest.skipUnless(os.name == "nt", "Windows extended path aliases")
+    def test_fixture_manifest_accepts_mixed_windows_aliases(self):
+        path = self.directory / "acceptance.json"
+        extended = "\\\\?\\" + str(self.directory.resolve())
+        manifest = {
+            "fixture": acceptance.FIXTURE, "directory": extended,
+            "database": str(self.directory / "validation.sqlite3"),
+            "stopFile": str(Path(extended) / "stop-fixture"),
+            "tokenFile": str(self.directory / "durable-token.txt"),
+            "url": "http://127.0.0.1:12345",
+        }
+        acceptance.write_json(path, manifest)
+        self.assertEqual(acceptance.load_manifest(path), manifest)
+
+
 class OfflineVerificationTests(unittest.TestCase):
     def test_committed_wal_is_read_without_changing_database_contents(self):
         self.verify_offline_snapshot(has_pending_wal=True)

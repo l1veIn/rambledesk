@@ -19,7 +19,7 @@ test('prepares the complete playground or a single workbench and refuses to repl
     for (const entry of ['prepare.mjs', 'fixtures', 'materials']) cpSync(join(root, entry), join(directory, entry), { recursive: true })
     const check = command('prepare.mjs', ['check'], directory)
     assert.equal(check.submitted, false)
-    assert.deepEqual(check.fixtures.map(fixture => fixture.type), ['ramble', 'questions', 'questions', 'document_review', 'web_review', 'terminal', 'visual_feedback', 'visual_feedback', 'diff_review', 'sort'])
+    assert.deepEqual(check.fixtures.map(fixture => fixture.type), ['ramble', 'questions', 'questions', 'document_review', 'web_review', 'terminal', 'visual_feedback', 'visual_feedback', 'diff_review', 'table_review', 'media_review', 'media_review', 'sort'])
     const prepared = command('prepare.mjs', ['new'], directory)
     const runPath = join(prepared.directory, 'run.json')
     const run = readJson(runPath)
@@ -51,6 +51,12 @@ test('prepares the complete playground or a single workbench and refuses to repl
     assert.equal(trialInput.workbench.data.cwd, realpathSync(directory))
     assert.equal(trialInput.title, '终端试用 · 独立体验')
     assert.ok(trialInput.attachments.every(attachment => existsSync(attachment.path)))
+    trial.status = 'completed'
+    writeJson(join(terminal.directory, 'run.json'), trial)
+    const media = command('prepare.mjs', ['new', 'media_review'], directory)
+    const mediaRun = readJson(join(media.directory, 'run.json'))
+    assert.deepEqual(mediaRun.stages.map(stage => stage.file), ['11-media-audio.json', '12-media-video.json'])
+    assert.ok(mediaRun.stages.every(stage => stage.type === 'media_review'))
   } finally {
     assert.equal(dirname(realpathSync(directory)), realpathSync(tmpdir()))
     assert.ok(directory.includes('ramble-playground-'))

@@ -21,7 +21,7 @@
 | 产品使命、主要旅程与范围 | [产品说明](PRODUCT.md)与[产品原则](CONSTITUTION.md) |
 | 唯一术语及身份边界 | [术语表](TERMINOLOGY.md) |
 | 模块所有权、持久化与客户端生命周期 | [架构](ARCHITECTURE.md) |
-| 当前工作台、共享输入与新增类型的实现入口 | [工作台开发索引](workbench/README.md)；八种正式类型、旧合同兼容与开发演练范围 |
+| 当前工作台、共享输入与新增类型的实现入口 | [工作台开发索引](workbench/README.md)；十种正式类型、旧合同兼容与开发演练范围 |
 | 工作台重构的落地范围与后续边界 | [工作台演进记录](WORKBENCH_EVOLUTION.md)；历史提案不作为实现合同 |
 | 实际跑一轮所有工作台 | [工作台 Playground](../playground/workbenches/README.md)；包含材料、请求夹具与启动提示词 |
 | 外部反馈请求、幂等与交付协议 | [协议](PROTOCOL.md) |
