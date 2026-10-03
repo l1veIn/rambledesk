@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { mount, tick, unmount } from 'svelte'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App.svelte'
 import { createWorkbenchCapabilities } from './lib/capabilities/workbenchCapabilities'
 import { createBrowserImagePastePlugin } from './lib/capabilities/browser/imagePasteCapability'
 import { readWorkbenchState } from './lib/workbenchState'
+import { documentReviewDefinition } from './lib/workbench/definitions/document_review/definition'
+import { questionsDefinition } from './lib/workbench/definitions/questions/definition'
 import type { WorkbenchSpec, WorkbenchState } from './lib/generated/feedback'
 import type { SpeechRecognitionListener } from './lib/speech/speech'
 import type {
@@ -71,6 +73,12 @@ let host: HTMLDivElement
 const rangeRects = Object.getOwnPropertyDescriptor(Range.prototype, 'getClientRects')
 const rangeBounds = Object.getOwnPropertyDescriptor(Range.prototype, 'getBoundingClientRect')
 const scrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
+
+beforeAll(async () => {
+  // These cases exercise focus and persistence. Load the real lazy views during
+  // setup so cold compilation does not use the field readiness wait budget.
+  await Promise.all([questionsDefinition.loadView(), documentReviewDefinition.loadView()])
+})
 
 beforeEach(() => {
   localStorage.clear()
