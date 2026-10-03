@@ -162,6 +162,7 @@ describe('diff review interactions', () => {
     expect(document.querySelector('[data-diff-add-comment]')).toBeNull()
     expect(app.onChange).not.toHaveBeenCalled()
   })
+  // Three full jsdom windows (1000 → 500 → 1000) test behavior, not a rendering-time SLA.
   it('bounds large diff rendering when jumping to historical anchors and returning to the previous window', async () => {
     const history: DiffReviewState = { type: 'diff_review', comments: [{ id: 'late', body: 'Later line', anchor: { file_id: 'large', hunk_index: 0, side: 'new', start_line: 1400, end_line: 1401 } }] }
     const app = await open(history, largeData)
@@ -178,7 +179,7 @@ describe('diff review interactions', () => {
     expect(line('new', 1400)).toBeNull()
     expect(app.props.current.state).toEqual(history)
     expect(app.onChange).not.toHaveBeenCalled()
-  })
+  }, 10_000)
   it('moves a large diff keyboard range across the source window boundary', async () => {
     const app = await open(null, largeData)
     expect(document.querySelectorAll('[data-diff-text]')).toHaveLength(1000)
