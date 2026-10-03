@@ -22,7 +22,7 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 | `actions` | 未提供 `workbench` 时必需 | 旧 Ramble 入口的 1–20 项有序体验动作，每项为 `id` 与 `instruction`；指定工作台类型时省略顶层 `actions`。 |
 | `workbench` | 可选 | `{type, version, data}`；省略时保持旧 Ramble 语义。类型专属 schema 通过 `describe_workbench` 查询。 |
 | `context_refs` | 可选，空列表 | 每项为 `label` 与 `uri`，仅提供可读上下文。 |
-| `attachments` | 可选，空列表 | 人类需要审阅的 Markdown 或图片，内容规则见下文。 |
+| `attachments` | 可选，空列表 | 人类需要审阅的 Markdown、图片或音视频；音视频用于媒体评审，格式与大小规则见下文。 |
 | `source_hint` | 可选 | 来源提示，可含路径或标题，不是身份或认证字段。 |
 | `allow_finish` | 可选，默认 `false` | 仅 Ramble（含未指定工作台的旧入口）支持；用于需要简单批准/拒绝的最终确认请求。 |
 | `final_summary` | `allow_finish=true` 时必需 | 人类可直接批准的确切结束语草稿；不能脱离 `allow_finish` 单独提供。 |
@@ -52,14 +52,14 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 | 字段 | 规则 |
 | --- | --- |
 | `markdown` | 短 Markdown 正文；文件名以 `.md` 或 `.markdown` 结尾。 |
-| `contents_base64` | 无现成文件的小图；必须解码为 PNG / JPEG / GIF / WebP。 |
-| `path` | 本机现存普通文件的绝对路径；Markdown 扩展名按文档读取，其余必须是上述图片类型。 |
+| `contents_base64` | 无现成文件的小型二进制材料；必须解码为 PNG / JPEG / GIF / WebP 或受支持的音视频容器，后者还需匹配文件名。 |
+| `path` | 本机现存普通文件的绝对路径；Markdown 扩展名按文档读取，其余必须是上述图片或受支持的音视频容器。 |
 
-已有本地文件 SHOULD 使用 `path`；MCP/工具调用 MUST NOT 为传递本机已有图片而把整图读进 `contents_base64`。附件路径不是源码 checkout 身份，不授予额外目录管理能力。
+已有本地文件 SHOULD 使用 `path`；MCP/工具调用 MUST NOT 为传递本机已有图片或媒体而把整个文件读进 `contents_base64`。每个附件最多 20 MiB；请求创建时冻结内容，播放器只读取保存的字节。容器识别不保证浏览器支持其中的编解码，支持格式见[音视频审阅](workbench/media-review.md)。附件路径不是源码 checkout 身份，不授予额外目录管理能力。
 
 ### 工作台发现与类型合同
 
-1. `list_workbenches({offset?, limit?})` 返回可用的第一方类型目录：`type`、`version`、`name`、`purpose`、`returns` 与 `interaction`。默认每页 5 项，最多 20 项；`next_offset` 表示下一页。目录不内嵌各类型完整 schema。
+1. `list_workbenches({offset?, limit?})` 返回可用的第一方类型目录：`type`、`version`、`name`、`purpose`、`returns` 与 `interaction`。默认每页 20 项，最多 20 项；`next_offset` 表示下一页。目录不内嵌各类型完整 schema。
 2. `describe_workbench({type, version?})` 返回所选类型的输入 schema、结果 schema、示例与说明。`version` 省略时当前选择 v1；已知合同可直接创建，无须每次重复发现。
 3. `request_feedback` 使用同一持久请求生命周期。类型、版本与输入不匹配 MUST 在持久化之前以 `INVALID_ARGUMENT` 拒绝，不能静默改成 Ramble。
 
@@ -73,8 +73,12 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 | `web_review` v1 | 浏览真实网页，对选中元素就地批注并集中回看；网页需允许嵌入，跨源页面需接入评审桥接脚本。 | `source_version, annotations`，每条保留页面 URL、视口、元素定位和意见；详见[网页评审](workbench/web-review.md)。 |
 | `terminal` v1 | 在请求目录中亲自试用 CLI，从体验 Markdown 复制命令，输出可引用到反馈正文。 | `sessions`，保留目录、shell、尺寸、ANSI 转录、最新画面与会话终态；详见[终端试用](workbench/terminal.md)。 |
 | `sort` v1 | 对条目拖动排序、编辑名称、删除和恢复。 | `order`、同序的最终 `items` 与 `removed_ids`；显式删除全部条目可返回空列表，旧结果仅含 `order` 时按原输入名称解释。 |
+| `visual_feedback` v1 | 在固定图片或原生空白画布上绘制视觉意见。 | 来源版本、画布尺寸、结构化标注和合成图片附件；详见[视觉反馈](workbench/visual-feedback.md)。 |
+| `diff_review` v1 | 针对固定 diff 的修改前后行、行范围或改动块批注。 | 来源版本与带精确 diff 锚点的批注；详见[差异评审](workbench/diff-review.md)。 |
+| `table_review` v1 | 浏览固定行列，对单元格提出改值建议和批注。 | 来源版本、按行列 ID 定位的 changes 与 comments；详见[表格审阅](workbench/table-review.md)。 |
+| `media_review` v1 | 播放固定音视频，对时间点或片段批注。 | 来源版本、duration_ms 和按毫秒定位的 comments；素材身份保存在请求合同及附件中。详见[音视频审阅](workbench/media-review.md)。 |
 
-发现目录提供上述六种正式类型。新方案选择请求使用 `questions`，不再创建独立 `single_choice` 工作台。`describe_workbench(single_choice)` 提示改用单题问答。开发 feature 另有 `rating_review` 验收样例，不计入正式数量。
+发现目录提供上述十种正式类型。新方案选择请求使用 `questions`，不再创建独立 `single_choice` 工作台。`describe_workbench(single_choice)` 提示改用单题问答。开发 feature 另有 `rating_review` 验收样例，不计入正式数量。
 
 旧 `single_choice` v1 合同保留兼容：已知旧客户端仍可原样创建/重试，已有请求、草稿和结果保持 `selected_option_id` 及 `status`，不静默重写为 `answers[]`，以免改变请求幂等比较或结果含义。客户端使用同一个问答视图承载旧单选，兼容层转换展示和交互状态，不迁移持久输入。未回答状态仍不能成功提交。
 

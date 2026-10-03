@@ -6,7 +6,7 @@ pub struct ListWorkbenchesInput {
     /// Zero-based offset into the capability catalog.
     #[serde(default)]
     pub offset: usize,
-    /// Defaults to 5; maximum 20. Schemas are never included in catalog pages.
+    /// Defaults to 20; maximum 20. Schemas are never included in catalog pages.
     pub limit: Option<usize>,
 }
 
@@ -56,7 +56,7 @@ fn catalog() -> Vec<WorkbenchSummary> {
 pub fn list_workbenches(
     input: &ListWorkbenchesInput,
 ) -> Result<WorkbenchListResult, ApplicationError> {
-    let limit = input.limit.unwrap_or(5);
+    let limit = input.limit.unwrap_or(20);
     if !(1..=20).contains(&limit) {
         return Err(ApplicationError::invalid_argument("limit must be 1–20"));
     }

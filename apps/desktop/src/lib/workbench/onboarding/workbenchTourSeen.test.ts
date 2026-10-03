@@ -11,18 +11,19 @@ function memoryStorage() {
 }
 
 describe('workbench tour completion', () => {
-  it('only persists explicit completion and keeps types independent across reloads', () => {
+  it.each(['ramble', 'document_review', 'web_review', 'terminal', 'visual_feedback', 'diff_review', 'custom-review'])('only persists explicit completion of %s and keeps types independent across reloads', (kind) => {
     const storage = memoryStorage()
     storage.values.set('rambledesk.onboarding.completed', 'true')
     const firstSession = createWorkbenchTourSeenStore(() => storage)
-    expect(firstSession.hasSeen('ramble', 1)).toBe(false)
+    expect(firstSession.hasSeen(kind, 1)).toBe(false)
     expect(storage.values.size).toBe(1)
-    firstSession.markSeen('ramble', 1)
+    firstSession.markSeen(kind, 1)
     const nextSession = createWorkbenchTourSeenStore(() => storage)
-    expect(nextSession.hasSeen('ramble', 1)).toBe(true)
-    expect(nextSession.hasSeen('document_review', 1)).toBe(false)
-    nextSession.markSeen('document_review', 1)
-    expect(nextSession.hasSeen('ramble', 1)).toBe(true)
+    expect(nextSession.hasSeen(kind, 1)).toBe(true)
+    const other = kind === 'visual_feedback' ? 'diff_review' : 'visual_feedback'
+    expect(nextSession.hasSeen(other, 1)).toBe(false)
+    nextSession.markSeen(other, 1)
+    expect(nextSession.hasSeen(kind, 1)).toBe(true)
     expect(storage.values.get('rambledesk.onboarding.completed')).toBe('true')
   })
 

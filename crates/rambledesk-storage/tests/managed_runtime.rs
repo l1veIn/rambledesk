@@ -1,6 +1,10 @@
 use async_trait::async_trait;
 #[path = "managed_runtime/cancelled_feedback.rs"]
 mod cancelled_feedback;
+#[path = "managed_runtime/continuation_repository.rs"]
+mod continuation_repository;
+#[path = "managed_runtime/continuation_startup.rs"]
+mod continuation_startup;
 #[path = "managed_runtime/prepared.rs"]
 mod prepared;
 use rambledesk_core::*;
@@ -21,7 +25,9 @@ struct FakeDriver {
     fail: AtomicBool,
     hang: AtomicBool,
     starting: tokio::sync::Notify,
+    start_release: tokio::sync::Notify,
     starting_count: Arc<AtomicUsize>,
+    start_attempts: AtomicUsize,
 }
 
 struct StartGuard(Arc<AtomicUsize>);
@@ -36,6 +42,12 @@ struct FakeConnection {
     closed: AtomicBool,
     stops: AtomicUsize,
     prompts: AtomicUsize,
+    hold_prompt: AtomicBool,
+    prompt_finish: tokio::sync::Notify,
+    permission_on_prompt: AtomicBool,
+    responses: AtomicUsize,
+    observer: Option<Arc<dyn AgentSessionObserver>>,
+    session_id: String,
 }
 
 #[async_trait]
@@ -48,10 +60,32 @@ impl AgentSessionConnection for FakeConnection {
         _: &str,
         _: SessionInteractionResponse,
     ) -> Result<(), AgentDriverError> {
+        self.responses.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
     async fn prompt(&self, _: &str) -> Result<String, AgentDriverError> {
         self.prompts.fetch_add(1, Ordering::SeqCst);
+        if self.permission_on_prompt.load(Ordering::SeqCst) {
+            self.observer
+                .as_ref()
+                .unwrap()
+                .observe(AgentSessionEvent::InteractionRequested(
+                    SessionInteraction {
+                        request_id: "permission-one".into(),
+                        session_id: self.session_id.clone(),
+                        title: "Allow access?".into(),
+                        details: None,
+                        kind: SessionInteractionKind::Permission {
+                            tool_call_id: None,
+                            options: vec![],
+                        },
+                    },
+                ))
+                .await?;
+        }
+        if self.hold_prompt.load(Ordering::SeqCst) {
+            self.prompt_finish.notified().await;
+        }
         Ok("EndTurn".into())
     }
     fn configuration(&self) -> SessionConfiguration {
@@ -79,6 +113,7 @@ impl AgentSessionConnection for FakeConnection {
     async fn stop(&self) -> Result<(), AgentDriverError> {
         self.closed.store(true, Ordering::SeqCst);
         self.stops.fetch_add(1, Ordering::SeqCst);
+        self.prompt_finish.notify_one();
         Ok(())
     }
 }
@@ -89,6 +124,7 @@ impl AgentSessionDriver for FakeDriver {
         &self,
         launch: AgentSessionLaunch,
     ) -> Result<StartedAgentSession, AgentDriverError> {
+        self.start_attempts.fetch_add(1, Ordering::SeqCst);
         self.starting_count.fetch_add(1, Ordering::SeqCst);
         let _guard = StartGuard(self.starting_count.clone());
         self.starting.notify_one();
@@ -99,7 +135,7 @@ impl AgentSessionDriver for FakeDriver {
                 .push(endpoint.bearer_token);
         }
         if self.hang.load(Ordering::SeqCst) {
-            std::future::pending::<()>().await;
+            self.start_release.notified().await;
         }
         if self.fail.load(Ordering::SeqCst) {
             return Err(AgentDriverError::new("fixture launch failed"));
@@ -114,7 +150,11 @@ impl AgentSessionDriver for FakeDriver {
             .lock()
             .unwrap()
             .push((launch.session.session_id.clone(), remote_session_id.clone()));
-        let connection = Arc::new(FakeConnection::default());
+        let connection = Arc::new(FakeConnection {
+            observer: Some(launch.observer),
+            session_id: launch.session.session_id.clone(),
+            ..Default::default()
+        });
         self.connections.lock().unwrap().push(connection.clone());
         Ok(StartedAgentSession {
             connection,

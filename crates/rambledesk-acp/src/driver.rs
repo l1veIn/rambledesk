@@ -221,6 +221,12 @@ async fn check_inner(
 
 #[async_trait]
 impl AgentSessionConnection for ManagedConnection {
+    fn prepare_prompt(&self) {
+        let _dispatch = self.prompt_dispatch.lock().expect("prompt dispatch");
+        self.cancelled
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
     fn builtin_instructions(&self) -> Option<String> {
         self.feedback_workflow
             .as_ref()
@@ -320,8 +326,6 @@ impl ManagedConnection {
         mut blocks: Vec<agent_client_protocol::schema::v1::ContentBlock>,
     ) -> Result<String, AgentDriverError> {
         use agent_client_protocol::schema::v1::{ContentBlock, TextContent};
-        self.cancelled
-            .store(false, std::sync::atomic::Ordering::SeqCst);
         // ACP has no standard system-prompt field. Runtime context accompanies
         // the actual prompt, never creates a turn, title, or user history row.
         if let Some(workflow) = &self.feedback_workflow {
@@ -331,7 +335,7 @@ impl ManagedConnection {
                 ContentBlock::Text(TextContent::new(crate::feedback_workflow::INSTRUCTIONS)),
             );
         }
-        let mut result = self.send_blocks(blocks, false).await?;
+        let mut result = self.send_blocks(blocks).await?;
         if let Some(workflow) = &self.feedback_workflow
             && result == "EndTurn"
             && !self.cancelled.load(std::sync::atomic::Ordering::SeqCst)
@@ -352,12 +356,9 @@ impl ManagedConnection {
                     return Ok("Cancelled".into());
                 }
                 result = self
-                    .send_blocks(
-                        vec![ContentBlock::Text(TextContent::new(
-                            crate::feedback_workflow::HANDOFF_REMINDER,
-                        ))],
-                        true,
-                    )
+                    .send_blocks(vec![ContentBlock::Text(TextContent::new(
+                        crate::feedback_workflow::HANDOFF_REMINDER,
+                    ))])
                     .await?;
             }
             if result == "EndTurn"
@@ -377,14 +378,13 @@ impl ManagedConnection {
     async fn send_blocks(
         &self,
         blocks: Vec<agent_client_protocol::schema::v1::ContentBlock>,
-        handoff_retry: bool,
     ) -> Result<String, AgentDriverError> {
         use agent_client_protocol::schema::v1::{PromptRequest, SessionId};
-        // Queueing a retry and cancelling share a synchronous gate: cancellation
-        // cannot slip between the last flag check and the protocol send.
+        // Initial delivery, retries and cancellation share a synchronous gate:
+        // cancellation cannot slip between the flag check and protocol enqueue.
         let pending = {
             let _dispatch = self.prompt_dispatch.lock().expect("prompt dispatch");
-            if handoff_retry && self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+            if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
                 return Ok("Cancelled".into());
             }
             self.sender

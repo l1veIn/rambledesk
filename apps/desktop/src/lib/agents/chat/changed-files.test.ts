@@ -71,6 +71,23 @@ describe('turn changed files', () => {
     expect(files.every((file) => file.kind === 'modified' && file.additions === 0 && file.diff === '')).toBe(true)
   })
 
+  it.each(['pending', 'in_progress', 'failed'] as const)('does not report %s tool attempts as changed files', (status) => {
+    const files = turnChangedFiles([
+      toolActivity({ kind: 'delete', status, raw_input: '{"path":"/repo/important.ts"}', raw_output: 'Permission denied; operation not executed' }),
+      toolActivity({ kind: 'edit', status, locations: [{ path: '/repo/edit.ts', line: 1 }] }, { id: 'b', sequence: 2 }),
+      toolActivity({ kind: 'move', status, content: [diffBlock('/repo/moved.ts', 'old\n', 'new\n')] }, { id: 'c', sequence: 3 }),
+    ])
+
+    expect(files).toEqual([])
+  })
+
+  it('keeps a completed edit when a later delete of the same file fails', () => {
+    const completed = toolActivity({ content: [diffBlock('/repo/kept.ts', 'old\n', 'new\n')] })
+    const failed = toolActivity({ kind: 'delete', status: 'failed', raw_input: '{"path":"/repo/kept.ts"}' }, { id: 'b', sequence: 2 })
+
+    expect(turnChangedFiles([completed, failed])).toEqual(turnChangedFiles([completed]))
+  })
+
   it('ignores read, search and malformed tool payloads', () => {
     const files = turnChangedFiles([
       toolActivity({ kind: 'read', locations: [{ path: '/repo/read.ts', line: 1 }] }),

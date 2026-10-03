@@ -4,7 +4,7 @@ use crate::{
     NoopApplicationChangeObserver, SystemClock, UuidV7Generator,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -69,6 +69,9 @@ pub(super) struct SessionEntry {
     pub lifecycle: Mutex<()>,
     pub interrupt: watch::Sender<u64>,
     pub events: Mutex<super::prompts::StreamState>,
+    // None means the Stop queue boundary could not be read; explicit retry is
+    // required rather than guessing which old submissions may reconnect.
+    pub stopped_feedback: Mutex<Option<HashSet<String>>>,
 }
 
 impl Default for SessionEntry {
@@ -83,6 +86,7 @@ impl Default for SessionEntry {
             lifecycle: Mutex::new(()),
             interrupt: watch::channel(0).0,
             events: Mutex::new(super::prompts::StreamState::default()),
+            stopped_feedback: Mutex::new(Some(HashSet::new())),
         }
     }
 }
@@ -385,11 +389,29 @@ impl SessionApplication {
         &self,
         input: ManagedSessionInput,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
+        self.start_session_traced(input, None).await
+    }
+
+    pub(super) async fn start_feedback_session(
+        &self,
+        input: ManagedSessionInput,
+        epoch: u64,
+        request_id: String,
+    ) -> Result<ManagedSessionSnapshot, SessionError> {
+        self.start_session_traced(input, Some((epoch, request_id)))
+            .await
+    }
+
+    async fn start_session_traced(
+        &self,
+        input: ManagedSessionInput,
+        feedback_start: Option<(u64, String)>,
+    ) -> Result<ManagedSessionSnapshot, SessionError> {
         let trace = crate::agent_operation_trace::AgentOperationTrace::new(
             "session.start",
             Some(&input.session_id),
         );
-        let result = self.start_session_inner(input).await;
+        let result = self.start_session_inner(input, feedback_start).await;
         if let Ok(snapshot) = &result
             && let Some(instance) = &snapshot.runtime.instance_id
         {
@@ -401,6 +423,7 @@ impl SessionApplication {
     async fn start_session_inner(
         &self,
         input: ManagedSessionInput,
+        feedback_start: Option<(u64, String)>,
     ) -> Result<ManagedSessionSnapshot, SessionError> {
         self.recover_runtime().await?;
         if self.closing.load(Ordering::SeqCst) {
@@ -420,6 +443,17 @@ impl SessionApplication {
         let entry = self.entry(&input.session_id).await;
         let mut interrupted = entry.interrupt.subscribe();
         let _lifecycle = entry.lifecycle.lock().await;
+        if let Some((epoch, request_id)) = &feedback_start
+            && (*epoch != *entry.interrupt.borrow()
+                || entry
+                    .stopped_feedback
+                    .lock()
+                    .await
+                    .as_ref()
+                    .is_none_or(|blocked| blocked.contains(request_id)))
+        {
+            return Err(SessionError::Interrupted);
+        }
         self.require_workable(&input.session_id).await?;
         if self.closing.load(Ordering::SeqCst) {
             return Err(SessionError::ShuttingDown);
@@ -432,6 +466,14 @@ impl SessionApplication {
         {
             drop(live);
             return self.get_session(input).await;
+        }
+        if feedback_start.is_some()
+            && (live.runtime.connection == SessionConnectionState::Failed
+                || live.runtime.activity != SessionActivityState::Idle
+                || live.runtime.instance_id.is_some()
+                || !live.interactions.is_empty())
+        {
+            return Err(SessionError::NotConnected);
         }
         let needs_cleanup = live.connection.is_some() || live.runtime.instance_id.is_some();
         drop(live);
@@ -565,6 +607,25 @@ impl SessionApplication {
         let _lifecycle = entry.lifecycle.lock().await;
         self.retire_entry_locked(&input.session_id, &entry, SessionRunEnd::Stopped, None)
             .await?;
+        if let Some(repository) = &self.deliveries {
+            // This queue read is the Stop boundary. Submissions already admitted
+            // cannot reconnect on their first worker observation after this Stop.
+            match repository.list_session_deliveries(&input.session_id).await {
+                Ok(pending) => {
+                    *entry.stopped_feedback.lock().await = Some(
+                        pending
+                            .into_iter()
+                            .filter(|delivery| delivery.state == FeedbackDeliveryState::Pending)
+                            .map(|delivery| delivery.request_id)
+                            .collect(),
+                    )
+                }
+                Err(error) => {
+                    *entry.stopped_feedback.lock().await = None;
+                    return Err(error.into());
+                }
+            }
+        }
         self.get_session(input).await
     }
 

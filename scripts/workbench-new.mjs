@@ -50,7 +50,7 @@ export function createWorkbench({ type, fixture = false, dryRun = false, root = 
     [`${own}/definition.ts`, render('definition.ts.tpl')], [`${own}/View.svelte`, render('View.svelte.tpl')],
     [`${own}/definition.test.ts`, render('definition.test.ts.tpl')],
     [material, render('experience.md.tpl')],
-    [fixtureFile, `${JSON.stringify({ title: tokens.__Title__, what_happened: '阅读材料，选择 1 至 5 分并留下意见。', workbench: { type, version: 1, data: { title: 'Review this proposal', material: 'Assess whether this proposal is ready to use.' } }, attachments: [{ path: `materials/${type}.md` }] }, null, 2)}\n`],
+    [fixtureFile, `${JSON.stringify({ title: tokens.__Title__, what_happened: '阅读材料，选择 1 至 5 分并留下意见。', workbench: { type, version: 1, data: { title: 'Review this proposal', material: 'Assess whether this proposal is ready to use.' } }, attachments: [{ file_name: `${type}.md`, path: `materials/${type}.md` }] }, null, 2)}\n`],
   ].map(([path, text]) => ({ path: safePath(root, path), text }))
   for (const file of files) if (existsSync(file.path)) throw new Error(`Refusing to overwrite ${relative(root, file.path)}`)
   const summary = { type, fixture, created: files.map((file) => relative(root, file.path).split(sep).join('/')), sharedProductionFiles: [rustPath, frontendPath].map((path) => relative(root, path).split(sep).join('/')), dryRun }

@@ -59,7 +59,7 @@
   class="appearance-surface flex h-full min-h-0 flex-col bg-background"
   aria-label={tr('Request list')}
 >
-  <div class={['flex h-12 shrink-0 items-center gap-1.5 border-b', collapsed ? 'justify-center px-2' : 'px-3']}>
+  <div class={['workbench-column-header flex items-center gap-1.5 border-b', collapsed ? 'justify-center px-2' : 'px-3']}>
     {#if !collapsed}
       <div class="min-w-0 flex-1">
         <strong class="flex items-center gap-1.5 text-xs font-semibold">
@@ -96,14 +96,6 @@
     </div>
   {/if}
 
-  {#if collapsed}
-    <div class="flex flex-col items-center gap-2 border-b py-2">
-      <RequestFilterPopover {filters} {collapsed} onChange={onFiltersChange} />
-      <span class="text-[10px] tabular-nums text-muted-foreground" title={tr('Requests')}>
-        {requests.length}{hasMore ? '+' : ''}
-      </span>
-    </div>
-  {/if}
   <ScrollArea class="min-h-0 flex-1" aria-busy={busy}>
     <div class="relative min-h-full">
       <div class={busy ? 'pointer-events-none select-none opacity-40' : undefined} inert={busy}>

@@ -54,7 +54,7 @@ pnpm dev
 
 `?preview=fixtures` 在 `main.ts` 构造 [previewApplicationTransport](../apps/desktop/src/lib/preview/previewApplicationTransport.ts)，经 `createWorkbenchComposition({ previewTransport })` 注入；控制器仍只依赖 Application Transport。预览 workspace snapshot 通过 `createWorkspaceShellSession({ snapshots })` 注入，不写真实 `rambledesk.ui-state`。完整 HTTP/SQLite 夹具与内存预览的证据范围不同。
 
-工作台组件的独立预览入口见 [dev/README](../apps/desktop/src/dev/README.md)。需要通过真实 Agent 体验六种正式工作台时，打开 [Playground](../playground/workbenches/README.md) 的目录并使用其中的提示词；七个场景另含单题问答，该流程与浏览器内存预览分别验证。新增普通类型的两个注册入口、脚手架与全屏选配见[新增教程](workbench/adding-a-workbench.md)。
+工作台组件的独立预览入口见 [dev/README](../apps/desktop/src/dev/README.md)。需要通过真实 Agent 体验十种正式工作台时，打开 [Playground](../playground/workbenches/README.md) 的目录并使用其中的提示词；十三个场景另含单题问答、两种视觉背景及音频/视频评审，该流程与浏览器内存预览分别验证。新增普通类型的两个注册入口、脚手架与全屏选配见[新增教程](workbench/adding-a-workbench.md)。
 
 ## 前后端合同
 

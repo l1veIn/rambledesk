@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { mount, tick, unmount } from 'svelte'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import App from './App.svelte'
 import { UNAVAILABLE_CAPABILITY_MANIFEST } from './lib/capabilities/unavailableCapabilities'
 import { autoOpenTaskBrief, cookingEnabled, locale, onboardingCompleted } from './lib/preferences'
 import { PreviewApplicationTransport } from './lib/preview/previewApplicationTransport'
 import { previewFixtures } from './lib/preview/previewFixtures'
 import { readWorkbenchState } from './lib/workbenchState'
+import { ratingReviewDefinition } from './lib/workbench/definitions/rating_review/definition'
 import { resetPreviewWorkspaceSnapshot } from './lib/workspace/previewWorkspaceSnapshot'
 import { sessionViewDescriptor, workbenchReviewViewDescriptor, workspaceViewKey } from './lib/workspace/viewDescriptors'
 
@@ -19,6 +20,11 @@ let app: ReturnType<typeof mount> | undefined
 let previousUrl = ''
 const originals = ['getClientRects', 'getBoundingClientRect'].map((name) => [name, Object.getOwnPropertyDescriptor(Range.prototype, name)] as const)
 const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations')
+beforeAll(async () => {
+  // This case exercises persistence and publication. Load the real lazy view
+  // during setup so cold compilation does not use the behavior wait budget.
+  await ratingReviewDefinition.loadView()
+})
 beforeEach(() => {
   localStorage.clear(); resetPreviewWorkspaceSnapshot()
   previousUrl = location.href; history.replaceState(null, '', '?preview=fixtures&workspace=rating_review')

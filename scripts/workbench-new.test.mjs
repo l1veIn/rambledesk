@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createWorkbench } from './workbench-new.mjs'
+import { prepare } from '../playground/workbenches/prepare.mjs'
 
 const rust = 'crates/rambledesk-core/src/workbenches/registry.rs'
 const frontend = 'apps/desktop/src/lib/workbench/definitions/registry.ts'
@@ -35,6 +36,25 @@ test('development fixture generation gates both registrations and places materia
   assert.match(readFileSync(join(root, frontend), 'utf8'), /import\.meta\.env\.DEV[\s\S]*await import\('\.\/probe_review\/definition'\)/)
   assert(result.created.some((path) => path.includes('fixtures/development/')))
 })
+
+for (const development of [false, true]) {
+  test(`generated ${development ? 'development' : 'ordinary'} fixture passes real playground preparation`, (t) => {
+    const root = workspace(t)
+    const type = 'proposal_review'
+    createWorkbench({ root, type, fixture: development })
+    const base = join(root, 'playground/workbenches')
+    const checked = prepare({ base, mode: type, development })
+    assert.equal(checked.fixtures.length, 1)
+    assert.equal(checked.fixtures[0].type, type)
+    if (development) assert.throws(() => prepare({ base, mode: type }), /development fixtures require/)
+
+    const run = prepare({ base, command: 'new', mode: type, development })
+    const input = JSON.parse(readFileSync(join(run.directory, checked.fixtures[0].file), 'utf8'))
+    assert.equal(run.submitted, false)
+    assert.equal(input.attachments[0].file_name, `${type}.md`)
+    assert.equal(readFileSync(input.attachments[0].path, 'utf8'), readFileSync(join(base, `materials/${type}.md`), 'utf8'))
+  })
+}
 test('dry run makes the exact extension diff reviewable without writing files', (t) => {
   const root = workspace(t)
   const before = readFileSync(join(root, rust), 'utf8')

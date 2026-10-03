@@ -42,7 +42,7 @@
     host: { requestId: workspace.request.request_id, controller,
       updateState: (next) => { if (!closed) onStateChange(next) },
       quote: (text) => { if (!closed) onQuote?.(text) },
-      openExpanded: definition?.layout.expanded && !immutable ? onOpenReview : undefined,
+      openExpanded: definition?.layout.expanded ? onOpenReview : undefined,
       selectAction: (id, index, title) => { if (!closed) onSelectAction(id, index, title) },
     },
   } satisfies WorkbenchViewContext
@@ -56,7 +56,7 @@
 
 <div bind:this={root} class="flex h-full min-h-0 min-w-0 flex-col" data-workbench={kind}>
   <WorkspaceHeader {workspace} {resolveHostProfile} {cooking}>
-    {#snippet actions()}<WorkbenchGuide {kind} requestId={workspace.request.request_id} disabled={closed || cooking} scope={guideScope} />{/snippet}
+    {#snippet actions()}<WorkbenchGuide {definition} requestId={workspace.request.request_id} disabled={closed || cooking} ready={!!View} scope={guideScope} />{/snippet}
   </WorkspaceHeader>
   <RequestContextPanel {workspace} {transport} {capabilities} />
   <div class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain" class:p-5={definition?.layout.padded ?? true} data-workbench-content>

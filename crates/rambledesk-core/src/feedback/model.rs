@@ -35,12 +35,12 @@ pub struct RequestAttachmentInput {
     pub markdown: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(
-        description = "Base64-encoded PNG/JPEG/GIF/WebP image. Prefer path when the file is already on disk. Mutually exclusive with markdown and path."
+        description = "Base64-encoded PNG/JPEG/GIF/WebP image or supported audio/video container with matching filename, at most 20 MiB. Prefer path when the file is already on disk. Mutually exclusive with markdown and path."
     )]
     pub contents_base64: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(
-        description = "Absolute local filesystem path. The server reads the file. Use this for images and Markdown already on disk. Mutually exclusive with markdown and contents_base64."
+        description = "Absolute local filesystem path. The server freezes the file bytes for this request. Use this for images, supported audio/video containers with matching filenames, or Markdown already on disk, at most 20 MiB per attachment. Mutually exclusive with markdown and contents_base64."
     )]
     pub path: Option<String>,
 }
@@ -70,7 +70,7 @@ pub struct RequestFeedbackInput {
     pub actions: Vec<ActionInput>,
     #[serde(default)]
     pub context_refs: Vec<ContextRef>,
-    /// Markdown documents and images the human should review with this request.
+    /// Markdown documents, images and supported audio/video the human should review.
     #[serde(default)]
     pub attachments: Vec<RequestAttachmentInput>,
     #[serde(default)]

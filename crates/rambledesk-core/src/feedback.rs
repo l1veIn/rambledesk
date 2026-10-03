@@ -363,6 +363,8 @@ impl FeedbackApplication {
                 contents,
             });
         }
+        crate::validate_visual_feedback_material(input.workbench.as_ref(), &attachments)?;
+        crate::validate_media_review_material(input.workbench.as_ref(), &attachments)?;
         let now = self.clock.now_rfc3339();
         let outcome = self
             .repository

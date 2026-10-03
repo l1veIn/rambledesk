@@ -138,6 +138,8 @@ const chinese: Readonly<Record<string, string>> = {
   'Enter a valid number within the requested range.': '请输入符合范围要求的有效数字。',
   'The answer does not meet the requested length.': '回答长度或选项数量不符合要求。',
   'Operation details': '操作详情',
+  'Tool call ID': '工具调用 ID',
+  'The agent did not provide operation details.': 'Agent 未提供此次操作的详情。',
   'More permissions waiting': '其他待确认权限',
   'Cancel permission': '取消此次权限请求',
   'Message the agent': '向 Agent 发送消息',

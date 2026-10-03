@@ -10,6 +10,9 @@ import { createDraftSession } from './draftSession'
 import { createSubmissionController, type SubmissionControllerContext } from './submissionController'
 import { createWorkspaceSession } from './workspaceSession'
 import { workbenchPreviewWorkspace } from '../../dev/workbenchPreviewFixtures'
+import { readWorkbenchState, withWorkbenchState } from '../workbenchState'
+import type { WorkbenchState } from '../generated/feedback'
+import { createWorkbenchLifecycle } from './workbenchLifecycle'
 
 const cleanups: Array<() => void> = []
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup(); vi.unstubAllGlobals() })
@@ -94,6 +97,61 @@ function harness(options: Partial<SubmissionControllerContext> = {}) {
 }
 
 describe('submission controller', () => {
+  it.each(['empty-text', 'unavailable-image'] as const)('cancels visual feedback with %s without generating a publication artifact', async (scenario) => {
+    let lifecycle: ReturnType<typeof createWorkbenchLifecycle>
+    const h = harness({ prepareWorkbench: (requestId, intent) => lifecycle.prepareSubmission(requestId, intent) })
+    const original = workspace()
+    const data = { title: 'Sketch', source_version: 'snapshot-1', width: 640, height: 400,
+      image_file_name: scenario === 'unavailable-image' ? 'original.png' : null }
+    h.session.replace({ ...original, workbench: { type: 'visual_feedback', version: 1, data },
+      request_attachments: scenario === 'unavailable-image' ? [{ attachment_id: 'original_image', file_name: 'original.png', media_type: 'image/png', byte_size: 4, sha256: 'hash', position: 0 }] : [] })
+    const state: WorkbenchState = { type: 'visual_feedback', composite_attachment_id: null, annotations: scenario === 'empty-text' ? [{
+      id: 'text_one', kind: 'text', points: [{ x: 20, y: 30 }], color: '#e5484d', stroke_width: 24, text: '', body: '',
+    }] : [] }
+    h.drafts.updateDraft(withWorkbenchState(h.draftSession.snapshot(), state))
+    h.transport.handle('readRequestAttachment', () => { throw new Error('Original image is unavailable') })
+    const persistGeneratedAttachment = vi.fn(async () => { throw new Error('Image upload must not run for cancellation') })
+    lifecycle = createWorkbenchLifecycle({ transport: h.transport, getWorkspace: () => get(h.session).workspace,
+      getState: () => readWorkbenchState(h.draftSession.snapshot().documentJson),
+      updateState: (next) => h.drafts.updateDraft(withWorkbenchState(h.draftSession.snapshot(), next)),
+      isEditable: () => !h.session.isTerminal() && !get(h.session).interactionLocked, onBusy: () => {}, persistGeneratedAttachment })
+    cleanups.push(lifecycle.dispose)
+    await h.controller.cancelFeedback()
+    expect(h.transport.callsFor('cancelFeedbackRequest')).toHaveLength(1)
+    expect(h.transport.callsFor('readRequestAttachment')).toHaveLength(0)
+    expect(persistGeneratedAttachment).not.toHaveBeenCalled()
+    expect(h.setPageError).toHaveBeenLastCalledWith('')
+    expect(readWorkbenchState(get(h.draftSession).documentJson)).toEqual(state)
+  })
+
+  it('still retires a recorded terminal session before cancellation', async () => {
+    let lifecycle: ReturnType<typeof createWorkbenchLifecycle>
+    const h = harness({ prepareWorkbench: (requestId, intent) => lifecycle.prepareSubmission(requestId, intent) })
+    h.session.replace({ ...workspace(), workbench: { type: 'terminal', version: 1, data: { cwd: '/preview/cli-demo' } } })
+    h.drafts.updateDraft(withWorkbenchState(h.draftSession.snapshot(), { type: 'terminal', sessions: [{
+      id: 'trial_one', cwd: '/preview/cli-demo', shell: 'preview', cols: 80, rows: 24, status: 'running', exit_code: null,
+      output: 'Preserved output', screen: 'Preserved output', truncated: false,
+    }] }))
+    h.transport.handle('stopTerminalSession', () => { throw { code: 'INVALID_ARGUMENT', message: 'The terminal session was not found for this request.' } })
+    lifecycle = createWorkbenchLifecycle({ transport: h.transport, getWorkspace: () => get(h.session).workspace,
+      getState: () => readWorkbenchState(h.draftSession.snapshot().documentJson),
+      updateState: (next) => h.drafts.updateDraft(withWorkbenchState(h.draftSession.snapshot(), next)),
+      isEditable: () => !h.session.isTerminal() && !get(h.session).interactionLocked, onBusy: () => {} })
+    cleanups.push(lifecycle.dispose)
+    await h.controller.cancelFeedback()
+    expect(h.transport.callsFor('stopTerminalSession')).toHaveLength(1)
+    expect(h.transport.callsFor('cancelFeedbackRequest')).toHaveLength(1)
+    const names = h.transport.calls.map((call) => call.name)
+    expect(names.indexOf('stopTerminalSession')).toBeLessThan(names.indexOf('cancelFeedbackRequest'))
+    expect(readWorkbenchState(get(h.draftSession).documentJson)).toMatchObject({ type: 'terminal', sessions: [{ status: 'stopped', output: 'Preserved output' }] })
+  })
+
+  it.each(['approve', 'cancel'] as const)('passes explicit %s intent to workbench preparation', async (intent) => {
+    const prepareWorkbench = vi.fn(async () => {})
+    const h = harness({ prepareWorkbench }); await h.run(intent)
+    expect(prepareWorkbench).toHaveBeenCalledExactlyOnceWith('request-1', intent)
+  })
+
   it.each(['approve', 'cancel'] as const)('does not freeze or %s when input arrives after preparation resolves', async (intent) => {
     const ready = deferred<{ kind: 'ready' }>()
     let busy = false

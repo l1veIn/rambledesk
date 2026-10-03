@@ -15,10 +15,7 @@ export function workbenchPreviewWorkspace(index: number): FeedbackWorkspaceView 
     what_happened: example.markdown, status: 'in_progress', resolution: null, allow_finish: false, final_summary: null }
   workspace.actions = structuredClone([...(example.actions ?? [])])
   workspace.context_refs = []
-  workspace.request_attachments = previewExampleAttachments(example).map(({ markdown, ...attachment }, position) => ({
-    ...attachment, media_type: 'text/markdown', byte_size: new TextEncoder().encode(markdown).byteLength,
-    sha256: `preview-${attachment.attachment_id}`, position,
-  }))
+  workspace.request_attachments = previewExampleAttachments(example).map(({ contents: _contents, ...attachment }) => attachment)
   workspace.attachments = []
   workspace.draft = { document_json: null, body_markdown: '', saved_revision: 0, updated_at: null }
   workspace.feedback = null

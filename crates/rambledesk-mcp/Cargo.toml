@@ -8,14 +8,18 @@ publish = false
 description = "Generic MCP adapter tool surface for RambleDesk"
 
 [dependencies]
+base64.workspace = true
 rambledesk-core.workspace = true
 rambledesk-hosts.workspace = true
 rmcp.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
 schemars.workspace = true
 tokio.workspace = true
 toml_edit = "0.23"
 
 [dev-dependencies]
 tempfile.workspace = true
+image = { version = "0.25.10", default-features = false, features = ["png"] }

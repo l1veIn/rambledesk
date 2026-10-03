@@ -10,6 +10,7 @@ import { readWorkbenchState, canSubmitWorkbench } from '../workbenchState'
 import { locale } from '../preferences'
 import SessionWorkbench from './SessionWorkbench.svelte'
 import type { WorkbenchSpec } from '../generated/feedback'
+import { diffReviewDefinition } from './definitions/diff_review/definition'
 import { snapshotFeedbackDraftMarkdown, updateFeedbackDraftState } from '../feedbackDraftDocument'
 import { writable } from 'svelte/store'
 import { VOICE_INPUT_CONTEXT, type VoiceInputContext, type VoiceInputState } from '../speech/voiceInputContext'
@@ -50,6 +51,16 @@ const button = (text: string) => Array.from(document.querySelectorAll('button'))
 const latest = () => readWorkbenchState(snapshots.at(-1)?.documentJson)
 
 describe('workbench interaction state is independent of feedback notes', () => {
+  it('allows a historical diff to open its expanded tab while all editing remains disabled', async () => {
+    const onOpenReview = vi.fn()
+    open(0, true, undefined, diffReviewDefinition.examples![0].spec, { onOpenReview })
+    await vi.waitFor(() => expect(document.querySelector('[data-diff-review]')).not.toBeNull())
+    button('Full screen review').click()
+    expect(onOpenReview).toHaveBeenCalledOnce()
+    expect(document.querySelector('[data-diff-add-comment]')).toBeNull()
+    expect(document.querySelector('[data-diff-hunk-comment]')).toBeNull()
+    expect(snapshots).toHaveLength(0)
+  })
   it('opens web review as an ordinary workbench and delegates full review to navigation', async () => {
     const onOpenReview = vi.fn()
     open(4, false, undefined, undefined, { onOpenReview })

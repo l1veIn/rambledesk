@@ -100,8 +100,8 @@ describe('structured timeline rendering', () => {
   })
 
   it('summarizes a settled turn as one changed-files card and hides it while the turn is running', () => {
-    const added = activity('add', 1, { content: [{ type: 'diff', path: '/repo/src/new.ts', old_text: null, new_text: 'first\nsecond\n' }] })
-    const edited = activity('edit', 2, { content: [{ type: 'diff', path: '/repo/src/main.ts', old_text: 'old content\n', new_text: 'new content\n' }] })
+    const added = activity('add', 1, { status: 'completed', content: [{ type: 'diff', path: '/repo/src/new.ts', old_text: null, new_text: 'first\nsecond\n' }] })
+    const edited = activity('edit', 2, { status: 'completed', content: [{ type: 'diff', path: '/repo/src/main.ts', old_text: 'old content\n', new_text: 'new content\n' }] })
     const settled = [added, edited]
     const item = groupTimeline(settled, false)[0]
     if (item.type !== 'turn') throw new Error('missing turn')

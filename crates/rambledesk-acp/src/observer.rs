@@ -3,6 +3,10 @@ use async_trait::async_trait;
 use rambledesk_core::{AgentSessionEvent, AgentSessionObserver, SessionActivityKind};
 use std::sync::{Arc, Mutex};
 
+#[cfg(test)]
+#[path = "observer_tests.rs"]
+mod tests;
+
 #[async_trait]
 pub(crate) trait ProtocolObserver: Send + Sync {
     fn remote_session_id(&self) -> Option<String> {
@@ -84,16 +88,27 @@ impl ProtocolObserver for ManagedObserver {
                 if remote.as_deref() != Some(request.session_id.to_string().as_str()) {
                     return Err(AcpError::Protocol("permission attribution"));
                 }
+                // ACP permission requests may carry only the ID of an earlier
+                // tool. Apply supplied fields through the same bounded patch
+                // path before core resolves that exact tool in the active turn.
+                let tool_call_id = request.tool_call.tool_call_id.to_string();
+                if let Some(event) = crate::activity_content::convert(
+                    agent_client_protocol::schema::v1::SessionUpdate::ToolCallUpdate(
+                        request.tool_call.clone(),
+                    ),
+                )? {
+                    self.sink
+                        .observe(event)
+                        .await
+                        .map_err(|_| AcpError::Protocol("permission tool context"))?;
+                }
                 let permission = rambledesk_core::SessionInteraction {
                     request_id,
                     session_id: self.local_session_id.clone(),
                     details: crate::permission_details::describe(&request.tool_call.fields),
-                    title: request
-                        .tool_call
-                        .fields
-                        .title
-                        .unwrap_or_else(|| "Agent tool operation".into()),
+                    title: request.tool_call.fields.title.unwrap_or_default(),
                     kind: rambledesk_core::SessionInteractionKind::Permission {
+                        tool_call_id: Some(tool_call_id),
                         options: request
                             .options
                             .into_iter()

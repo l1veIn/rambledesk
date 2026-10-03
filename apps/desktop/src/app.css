@@ -47,6 +47,7 @@
   --radius: 0.375rem;
   --workbench-sidebar-width: 240px;
   --workbench-sidebar-collapsed-width: 3.5rem;
+  --workbench-column-header-height: 4rem;
 
   /* Desktop window frame. The browser client zeroes these out (body.web-mode). */
   --app-frame-inset: 1px;
@@ -281,6 +282,13 @@ body.ramble-console-mode {
 
 .workspace-panel {
   isolation: isolate;
+}
+
+/* Request identity and Agent status share one row across the workbench columns. */
+.workbench-column-header {
+  block-size: var(--workbench-column-header-height);
+  min-block-size: var(--workbench-column-header-height);
+  flex-shrink: 0;
 }
 
 /* PaneForge supplies the resize behavior and ARIA semantics; these styles provide a full-length rail with a hover state. */

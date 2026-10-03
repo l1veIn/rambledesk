@@ -185,7 +185,12 @@ impl From<RepositoryError> for ApplicationError {
             ),
             RepositoryError::WorkbenchIncomplete => (
                 ApplicationErrorCode::InvalidArgument,
-                "Complete the workbench questions or selection before submitting; notes are optional",
+                "Complete or correct the workbench input before submitting; notes are optional",
+                false,
+            ),
+            RepositoryError::WorkbenchImageInvalid => (
+                ApplicationErrorCode::InvalidArgument,
+                "Visual feedback requires a readable, unchanged PNG feedback attachment belonging to this request and matching the canvas dimensions; regenerate the composite image and retry",
                 false,
             ),
             RepositoryError::DraftEmpty => (

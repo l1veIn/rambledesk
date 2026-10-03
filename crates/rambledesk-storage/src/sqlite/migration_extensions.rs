@@ -1,7 +1,7 @@
 //! Keep the v0.3.3 storage contract readable during a downgrade.
 //!
 //! v0.3.3 rejects any SQLx migration above 10, even if it only adds optional
-//! columns or independent tables. The audited ACP additions have their own
+//! columns or independent tables. The audited compatible additions have their own
 //! ledger. This is not an instruction to hide arbitrary future schema changes:
 //! incompatible changes must advance the legacy compatibility boundary.
 
@@ -16,7 +16,9 @@ use super::{MIGRATOR, StorageOpenError};
 pub(super) const LEGACY_VERSION: i64 = 10;
 // Explicitly audited migrations; a new migration must choose its compatibility
 // policy and update the round-trip tests rather than silently joining this list.
-const LAST_EXTENSION: i64 = 21;
+// Extension 22 only broadens the material MIME constraint: all columns, paths,
+// existing values, indexes and old Markdown/image writes remain compatible.
+const LAST_EXTENSION: i64 = 22;
 
 type Applied = (i64, bool, Vec<u8>);
 

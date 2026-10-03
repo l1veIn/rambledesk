@@ -70,7 +70,7 @@
   <div class="h-px shrink-0 bg-primary" data-status-layout-anchor></div>
   <!-- The Agent status lives in the feedback column now, so the preview shows it
        the same way the workbench does. -->
-  <div class="shrink-0 border-b bg-muted/15 px-4 py-2" data-feedback-agent-status>
+  <div class="workbench-column-header grid items-center border-b bg-muted/15 px-4" data-feedback-agent-status>
     {@render agentStatus()}
   </div>
   <div class="h-px shrink-0 bg-primary" data-status-layout-anchor></div>

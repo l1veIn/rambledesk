@@ -1,8 +1,6 @@
 import { Marked, type Token } from 'marked'
 import type { AttachmentView } from '../feedback'
 import { attachmentIdFromUrl } from '../attachmentMarkdown'
-import type { FeedbackDraftSnapshot } from '../feedbackDraftDocument'
-import { unlinkWorkbenchFieldAttachment } from '../workbenchFields'
 
 type KnownAttachment = Pick<AttachmentView, 'attachment_id'>
 type Reference = { attachmentId: string; from: number; to: number; raw: string }
@@ -86,10 +84,4 @@ export function replaceFieldAttachmentText(value: string, text: string, attachme
 
 export function removeFieldAttachment(value: string, attachmentId: string, attachments: readonly KnownAttachment[]): string {
   return withoutReferences(value, references(value, attachments).filter((item) => item.attachmentId === attachmentId))
-}
-
-/** A deleted request attachment must be unlinked from every editable field. */
-export function removeWorkbenchAttachmentReferences(snapshot: FeedbackDraftSnapshot, attachmentId: string): FeedbackDraftSnapshot {
-  return unlinkWorkbenchFieldAttachment(snapshot, attachmentId, (value) =>
-    removeFieldAttachment(value, attachmentId, [{ attachment_id: attachmentId }]))
 }

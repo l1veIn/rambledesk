@@ -86,7 +86,7 @@
 >
   <!-- The Agent/ACP status belongs to the feedback column, not the workbench header. -->
   {#if agentStatus}
-    <div class="shrink-0 border-b bg-muted/15 px-4 py-2" data-feedback-agent-status>
+    <div class="workbench-column-header grid items-center border-b bg-muted/15 px-4" data-feedback-agent-status>
       {@render agentStatus()}
     </div>
   {/if}
@@ -94,6 +94,7 @@
   <FeedbackEditorPanel
     bind:this={editor}
     {workspace}
+    columnHeader={!agentStatus}
     attachmentCount={workspace.attachments.length}
     {attachmentBusy}
     {onRemoveAttachment}

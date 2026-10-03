@@ -506,6 +506,7 @@ pub(super) fn repository_error_code(error: RepositoryError) -> &'static str {
         RepositoryError::RequestConflict
         | RepositoryError::DraftEmpty
         | RepositoryError::WorkbenchIncomplete
+        | RepositoryError::WorkbenchImageInvalid
         | RepositoryError::WorkbenchUnsupported => "RECOVERY_FAILURE",
         RepositoryError::HostSessionNotFound | RepositoryError::HostSessionHasOpenRequests => {
             "RECOVERY_FAILURE"

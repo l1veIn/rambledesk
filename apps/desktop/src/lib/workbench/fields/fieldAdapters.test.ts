@@ -8,7 +8,7 @@ import { readWorkbenchField } from '../../workbenchFields'
 import { applySpeechWriteback } from '../../speech/speechWriteback'
 import { applyFieldSpeechCleanup, collectFieldSpeechSegments, fieldSpeechSegmentsForTarget } from '../../speech/fieldSpeechSegments'
 import { captureFieldTidy, replaceFieldTidy } from '../../speech/fieldSpeechText'
-import { removeWorkbenchAttachmentReferences } from '../../input/fieldAttachmentText'
+import { removeWorkbenchAttachmentReferences } from './attachmentReferences'
 
 type ProbeState = { type: 'field_probe'; entityId: string; opinion: string; editable: boolean }
 type ProbeData = { source_version: string; material: string }

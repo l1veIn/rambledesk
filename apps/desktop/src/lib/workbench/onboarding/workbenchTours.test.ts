@@ -1,16 +1,43 @@
 import { describe, expect, it } from 'vitest'
 import { getWorkbenchTour } from './workbenchTours'
+import { getWorkbenchDefinition } from '../definitions/registry'
+import type { WorkbenchDefinition } from '../definitions/contracts'
 
 describe('workbench guides', () => {
-  it('does not create a guide for unrelated or future workbench types', () => {
-    for (const type of ['questions', 'future-workbench', '', undefined, null]) {
-      expect(getWorkbenchTour(type, 'zh-CN')).toBeNull()
+  it('requires declared, nonempty guide metadata', () => {
+    for (const definition of [getWorkbenchDefinition('questions'), getWorkbenchDefinition('sort'), { type: 'future-workbench' }, { type: 'empty', guide: { version: 1, steps: [] } }, undefined, null]) {
+      expect(getWorkbenchTour(definition, 'zh-CN')).toBeNull()
     }
   })
 
-  it.each(['ramble', 'document_review'])('keeps %s step identity stable across locale changes', (type) => {
-    const chinese = getWorkbenchTour(type, 'zh-CN')!
-    const english = getWorkbenchTour(type, 'en')!
+  it('uses an arbitrary definition identity, guide version and bilingual steps without registration', () => {
+    const definition: Pick<WorkbenchDefinition, 'type' | 'guide'> = {
+      type: 'custom-review',
+      guide: {
+        version: 3,
+        steps: [{ id: 'source', target: '[data-custom-source]', title: ['查看材料', 'Read the source'], body: ['在这里查看', 'Read here'] }],
+      },
+    }
+    expect(getWorkbenchDefinition(definition.type)).toBeUndefined()
+    const chinese = getWorkbenchTour(definition, 'zh-CN')!
+    const english = getWorkbenchTour(definition, 'en')!
+    expect(chinese.id).toBe('custom-review')
+    expect(chinese.version).toBe(3)
+    expect(chinese.steps).toEqual([{ id: 'source', target: '[data-custom-source]', title: '查看材料', body: '在这里查看' }])
+    expect(english.steps).toEqual([{ id: 'source', target: '[data-custom-source]', title: 'Read the source', body: 'Read here' }])
+    expect(definition.guide!.steps[0].title).toEqual(['查看材料', 'Read the source'])
+  })
+
+  it.each([
+    ['ramble', 1], ['document_review', 1], ['web_review', 1], ['terminal', 1],
+    ['visual_feedback', 1], ['diff_review', 2], ['table_review', 1], ['media_review', 1],
+  ] as const)('keeps %s step identity stable across locale changes', (type, version) => {
+    const definition = getWorkbenchDefinition(type)!
+    const chinese = getWorkbenchTour(definition, 'zh-CN')!
+    const english = getWorkbenchTour(definition, 'en')!
+    expect(chinese.id).toBe(type)
+    expect(chinese.version).toBe(version)
+    expect(chinese.steps).toHaveLength(5)
     expect(chinese.steps.map(({ id, target }) => ({ id, target })))
       .toEqual(english.steps.map(({ id, target }) => ({ id, target })))
     expect(new Set(chinese.steps.map(({ id }) => id)).size).toBe(chinese.steps.length)

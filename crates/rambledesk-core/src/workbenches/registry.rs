@@ -55,4 +55,28 @@ register_workbenches! {
         result: (SortResult),
         exports: [SortData, SortItem, SortLabelEdit, SortState, SortResult]
     }
+    VisualFeedback => visual_feedback {
+        wire: "visual_feedback", data: VisualFeedbackData,
+        state: [VisualFeedback(VisualFeedbackState),],
+        result: (VisualFeedbackResult),
+        exports: [VisualFeedbackData, VisualFeedbackPoint, VisualFeedbackAnnotationKind, VisualFeedbackAnnotation, VisualFeedbackState, VisualFeedbackResult]
+    }
+    DiffReview => diff_review {
+        wire: "diff_review", data: DiffReviewData,
+        state: [DiffReview(DiffReviewState),],
+        result: (DiffReviewResult),
+        exports: [DiffReviewData, DiffReviewFile, DiffReviewSide, DiffReviewAnchor, DiffReviewComment, DiffReviewState, DiffReviewResult]
+    }
+    TableReview => table_review {
+        wire: "table_review", data: TableReviewData,
+        state: [TableReview(TableReviewState),],
+        result: (TableReviewResult),
+        exports: [TableReviewData, TableReviewColumn, TableReviewRow, TableReviewChange, TableReviewComment, TableReviewState, TableReviewResult]
+    }
+    MediaReview => media_review {
+        wire: "media_review", data: MediaReviewData,
+        state: [MediaReview(MediaReviewState),],
+        result: (MediaReviewResult),
+        exports: [MediaReviewKind, MediaReviewData, MediaReviewComment, MediaReviewState, MediaReviewResult]
+    }
 }

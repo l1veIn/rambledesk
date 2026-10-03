@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mount, tick, unmount } from 'svelte'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import App from './App.svelte'
 import { PreviewApplicationTransport } from './lib/preview/previewApplicationTransport'
 import type { ApplicationCommandInput, ApplicationCommandName, ApplicationCommandResult } from './lib/application/contracts'
@@ -10,6 +10,7 @@ import { autoOpenTaskBrief, cookingEnabled, locale, onboardingCompleted } from '
 import { previewFixtures } from './lib/preview/previewFixtures'
 import { resetPreviewWorkspaceSnapshot, savePreviewWorkspaceSnapshot } from './lib/workspace/previewWorkspaceSnapshot'
 import { readWorkbenchState } from './lib/workbenchState'
+import { terminalDefinition } from './lib/workbench/definitions/terminal/definition'
 import { requestTaskViewDescriptor, sessionViewDescriptor, workbenchReviewViewDescriptor, workspaceViewKey } from './lib/workspace/viewDescriptors'
 import { createSimulatedSpeech } from './dev/simulatedSpeech'
 import type { WorkbenchCapabilities } from './lib/capabilities/workbenchCapabilities'
@@ -27,7 +28,7 @@ vi.mock('./lib/workbench/terminal/xtermAdapter', () => ({
     let screen = ''
     return { reset: () => { screen = '' }, write: async (text: string) => { screen += text; surface.textContent = screen },
       screen: () => screen, size: () => ({ cols: 80, rows: 24 }), fit() {}, focus() {},
-      paste: (text: string) => terminal.onData?.(text), setInteractive() {},
+      paste: (text: string) => terminal.onData?.(text), setInteractive() {}, setAppearance() {},
       dispose: () => { terminal.dispose(); surface.remove() } }
   },
 }))
@@ -39,6 +40,11 @@ const bodySelector = '[contenteditable="true"][aria-label="Markdown rich-text fe
 let app: ReturnType<typeof mount> | undefined
 let previousUrl = ''
 const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations')
+beforeAll(async () => {
+  // These cases exercise terminal interactions and submission ordering. Load the
+  // real lazy view during setup so cold compilation does not use the behavior wait budget.
+  await terminalDefinition.loadView()
+})
 beforeEach(() => {
   localStorage.clear(); resetPreviewWorkspaceSnapshot(); terminal.create.mockClear(); terminal.dispose.mockClear()
   previousUrl = location.href; history.replaceState(null, '', '?preview=fixtures&workspace=terminal')

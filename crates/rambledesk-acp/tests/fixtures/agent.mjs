@@ -49,6 +49,8 @@ createInterface({input:process.stdin}).on('line',line => {
           toolCall:{toolCallId:`tool-${number}`,title:`Run command ${number}`,status:'pending',
             ...(number === 1 ? {rawInput:{command:'cargo check',cwd:'C:/fixture-project'},locations:[{path:'C:/fixture-project/Cargo.toml',line:4}]} : {})},
           options:[{optionId:'allow',name:'Allow',kind:'allow_once'}]}})
+      } else if (params.prompt[0].text === 'wait' && mode === 'ignore_cancel') {
+        send({method:'session/update',params:{sessionId:params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'WAITING FOR CANCELLATION'}}}})
       } else if (params.prompt[0].text !== 'wait') {
         for(const text of ['fixture ',`reply: ${params.prompt[0].text}`])
           send({method:'session/update',params:{sessionId:params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}}})

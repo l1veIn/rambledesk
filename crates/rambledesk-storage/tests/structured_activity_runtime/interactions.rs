@@ -11,13 +11,166 @@ fn request(id: &str, kind: SessionInteractionKind) -> SessionInteraction {
 }
 
 #[tokio::test]
+async fn pending_cancel_dispatch_blocks_next_turn_admission() {
+    let (_dir, store, app, driver, ids) = setup().await;
+    let id = &ids[0];
+    prompt(&app, id).await;
+    let connection = driver.connections.lock().unwrap()[id].clone();
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    *connection.cancel_gate.lock().unwrap() = Some((entered.clone(), release.clone()));
+    let cancelling = app.clone();
+    let target = ManagedSessionInput {
+        session_id: id.clone(),
+    };
+    let cancel = tokio::spawn(async move { cancelling.cancel_prompt(target).await });
+    tokio::time::timeout(std::time::Duration::from_secs(3), entered.notified())
+        .await
+        .unwrap();
+    // The old turn can finish naturally while its cancellation is still being
+    // dispatched. A new turn must not overtake that delayed notification.
+    connection.finish.notify_one();
+    idle(&app, id).await;
+    let next = SendManagedPromptInput {
+        session_id: id.clone(),
+        text: "Next turn".into(),
+    };
+    assert!(matches!(
+        app.send_prompt(next.clone()).await,
+        Err(SessionError::Busy)
+    ));
+    release.notify_one();
+    cancel.await.unwrap().unwrap();
+    app.send_prompt(next).await.unwrap();
+    let running = app
+        .get_session(ManagedSessionInput {
+            session_id: id.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        running.runtime.connection,
+        SessionConnectionState::Connected
+    );
+    assert_eq!(running.runtime.activity, SessionActivityState::Running);
+    let users = running
+        .activities
+        .iter()
+        .filter(|row| row.kind == SessionActivityKind::UserMessage)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        users.len(),
+        2,
+        "rejected admission must not append a user message"
+    );
+    assert_eq!(users[1].text, "Next turn");
+    connection.finish.notify_one();
+    idle(&app, id).await;
+    app.shutdown().await.unwrap();
+    store.close().await;
+}
+
+#[tokio::test]
+async fn permission_context_follows_exact_tool_in_current_session_and_turn_without_approval() {
+    let (_dir, store, app, driver, ids) = setup().await;
+    for id in &ids {
+        prompt(&app, id).await;
+        let connection = driver.connections.lock().unwrap()[id].clone();
+        connection
+            .observer
+            .observe(AgentSessionEvent::ToolCall {
+                tool_call_id: "shared-tool-id".into(),
+                patch: SessionToolCallPatch {
+                    title: Some(format!("Feedback command for {id}")),
+                    raw_input: Some(format!("command for {id}")),
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+    }
+    let id = &ids[0];
+    let connection = driver.connections.lock().unwrap()[id].clone();
+    let mut permission = request(
+        id,
+        SessionInteractionKind::Permission {
+            tool_call_id: Some("shared-tool-id".into()),
+            options: vec![],
+        },
+    );
+    permission.title.clear();
+    connection
+        .observer
+        .observe(AgentSessionEvent::InteractionRequested(permission.clone()))
+        .await
+        .unwrap();
+    let snapshot = app
+        .get_session(ManagedSessionInput {
+            session_id: id.clone(),
+        })
+        .await
+        .unwrap();
+    let visible = &snapshot.interactions[0];
+    assert_eq!(visible.title, format!("Feedback command for {id}"));
+    assert!(
+        visible
+            .details
+            .as_ref()
+            .unwrap()
+            .contains(&format!("command for {id}"))
+    );
+    assert!(!visible.details.as_ref().unwrap().contains(&ids[1]));
+    assert_eq!(
+        snapshot.runtime.activity,
+        SessionActivityState::WaitingInput
+    );
+    assert!(connection.responses.lock().unwrap().is_empty());
+    app.respond_interaction(RespondManagedInteractionInput {
+        session_id: id.clone(),
+        request_id: permission.request_id.clone(),
+        response: permission.cancel_response(),
+    })
+    .await
+    .unwrap();
+    connection.finish.notify_one();
+    idle(&app, id).await;
+    prompt(&app, id).await;
+    connection
+        .observer
+        .observe(AgentSessionEvent::InteractionRequested(permission))
+        .await
+        .unwrap();
+    let snapshot = app
+        .get_session(ManagedSessionInput {
+            session_id: id.clone(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(snapshot.interactions[0].title, "Agent tool operation");
+    assert_eq!(snapshot.interactions[0].details, None);
+    assert_eq!(
+        connection.responses.lock().unwrap().len(),
+        1,
+        "new permission must still wait"
+    );
+    app.shutdown().await.unwrap();
+    store.close().await;
+}
+
+#[tokio::test]
 async fn old_response_cannot_retire_a_new_instance_interaction() {
     for next in ["completed", "next_turn", "reconnected"] {
         let (_dir, store, app, driver, ids) = setup().await;
         let id = &ids[0];
         prompt(&app, id).await;
         let old = driver.connections.lock().unwrap()[id].clone();
-        let item = request(id, SessionInteractionKind::Permission { options: vec![] });
+        let item = request(
+            id,
+            SessionInteractionKind::Permission {
+                tool_call_id: None,
+                options: vec![],
+            },
+        );
         old.observer
             .observe(AgentSessionEvent::InteractionRequested(item.clone()))
             .await

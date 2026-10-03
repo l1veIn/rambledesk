@@ -22,6 +22,19 @@ const V033_CHECKSUMS: [&str; 10] = [
     "f5bf20625fa3ddd08613c32f2980cb7f0d8d5b704560252e9268088665e5116ef0a5955d1201224d2cf5d0045b4a6716",
     "9bc7e3369c5c95abdcc595899699f4e6d85a300d5f15f710117776b78e16e753bf96ea2674c11d3a2b3fdc9af49355c4",
 ];
+// LF checksums of extensions 11..=20 from the released v0.4.0 tag.
+const V040_EXTENSION_CHECKSUMS: [&str; 10] = [
+    "0f38c4cece52d0f29eb672cad895e3d2a57bcd2019ae5c6342e98f04baf459aeed5b2ce5bdcb611a9e1ebcef64ed4be3",
+    "6e664219505ecadb09ca645840fda40f485ac79483788e21dab33748cd288d159a8f654fe7a7c78e0c4fd0f4a7b4569f",
+    "72c58f0c21962a1440cb9ae5b1739f415e7aea2b9c9200c7ca9512d9d5bb2895ac4b06f4a89e4eb2a7a39a0bf6dfe26f",
+    "f87e73c51f8713a6260c4e28318ecbb2d7855dd40473f43a979f1f9aaddcad2ab4fdc6510bdf135a1646fcf9d6565fa9",
+    "f65d774c15720ef3cb6ee2bf4b60386017f6dd56777d4351062ef4cf35e57bc06b3045b7aa26566b5069e6d0ae1170b8",
+    "01e4cfdde1650825be2679f03c8e0d1b3df8ea3f91f67e54c3f876f38ce9630ac17fce260d1b2c5f55d9aa5362f49853",
+    "0f574009018230ff6900b011d36722822ea198edfc4332026d869349e5610168a4bb9cbc7636488f818114a048d041e8",
+    "0ef6f2186a766cde16ee83b725832076162bb2eacd0646daeb4c658c41907fd6a1661a78da1fcd2d8346b039fe09eabc",
+    "a5ca635709567e7ee8c631edb60543d02139005337207eee670f1210a21a608c4d5e3e6c98ef2774353b83c3918b0f78",
+    "5b4a4e42a85f485e58b6b17e7775a3b37d005ffb7b32898eb669ef3351a653d04aa7d0ceb7eb4cbabacbf2e0f6483078",
+];
 const NOW: &str = "2026-09-06T01:00:00Z";
 
 fn v033_migrator() -> Migrator {
@@ -145,6 +158,127 @@ async fn seed_acp(workspace: &TestWorkspace, store: &SqliteFeedbackStore) {
 }
 
 #[tokio::test]
+async fn v040_extension_20_upgrades_to_22_preserving_existing_data_and_history() {
+    let workspace = TestWorkspace::new().await;
+    let released = pool(&workspace).await;
+    let migrations = MIGRATOR
+        .iter()
+        .filter(|migration| migration.version <= 20)
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(migrations.len(), 20);
+    for (migration, checksum) in migrations
+        .iter()
+        .zip(V033_CHECKSUMS.into_iter().chain(V040_EXTENSION_CHECKSUMS))
+    {
+        assert_eq!(
+            hex::encode(Sha384::digest(
+                migration.sql.replace("\r\n", "\n").as_bytes()
+            )),
+            checksum
+        );
+    }
+    Migrator {
+        migrations: Cow::Owned(migrations),
+        ..Migrator::DEFAULT
+    }
+    .run(&released)
+    .await
+    .unwrap();
+    // Reproduce v0.4.0's separate extension ledger; this is an upgrade fixture,
+    // not a claim that the v0.4.0 binary accepts extensions newer than 20.
+    sqlx::raw_sql(
+        "CREATE TABLE _rambledesk_extensions (
+        version BIGINT PRIMARY KEY, description TEXT NOT NULL,
+        installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        success BOOLEAN NOT NULL, checksum BLOB NOT NULL, execution_time BIGINT NOT NULL
+    );
+    INSERT INTO _rambledesk_extensions SELECT * FROM _sqlx_migrations WHERE version > 10;
+    DELETE FROM _sqlx_migrations WHERE version > 10;",
+    )
+    .execute(&released)
+    .await
+    .unwrap();
+    let extension_version: i64 =
+        sqlx::query_scalar("SELECT max(version) FROM _rambledesk_extensions")
+            .fetch_one(&released)
+            .await
+            .unwrap();
+    assert_eq!(extension_version, 20);
+    assert_eq!(applied_migration_version(&released).await.unwrap(), 10);
+    type History = (i64, String, String, bool, Vec<u8>, i64);
+    const HISTORY: &str = "SELECT version,description,installed_on,success,checksum,execution_time FROM _rambledesk_extensions WHERE version <= 20 ORDER BY version";
+    let history: Vec<History> = sqlx::query_as(HISTORY).fetch_all(&released).await.unwrap();
+    legacy_insert(&released, "v040-request").await;
+    sqlx::query(
+        "INSERT INTO drafts(request_id,document_json,body_markdown,revision,updated_at)
+        VALUES('v040-request',NULL,'Unsubmitted v0.4.0 draft',3,?1)",
+    )
+    .bind(NOW)
+    .execute(&released)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE feedback_requests SET revision=3 WHERE id='v040-request'")
+        .execute(&released)
+        .await
+        .unwrap();
+    let material = b"# Original v0.4.0 material";
+    sqlx::query("INSERT INTO request_attachments(id,request_id,file_name,byte_size,media_type,sha256,position,contents,created_at)
+        VALUES('v040-material','v040-request','original.md',?1,'text/markdown',?2,0,?3,?4)")
+        .bind(material.len() as i64).bind(hex::encode(Sha256::digest(material)))
+        .bind(material.as_slice()).bind(NOW).execute(&released).await.unwrap();
+    type Draft = (Option<String>, String, i64, String);
+    const DRAFT: &str = "SELECT document_json,body_markdown,revision,updated_at FROM drafts WHERE request_id='v040-request'";
+    let draft: Draft = sqlx::query_as(DRAFT).fetch_one(&released).await.unwrap();
+    released.close().await;
+
+    for _ in 0..2 {
+        let store = SqliteFeedbackStore::connect(&workspace.database)
+            .await
+            .unwrap();
+        let versions: Vec<i64> =
+            sqlx::query_scalar("SELECT version FROM _rambledesk_extensions ORDER BY version")
+                .fetch_all(&store.pool)
+                .await
+                .unwrap();
+        assert_eq!(versions, (11..=22).collect::<Vec<_>>());
+        assert_eq!(
+            sqlx::query_as::<_, History>(HISTORY)
+                .fetch_all(&store.pool)
+                .await
+                .unwrap(),
+            history
+        );
+        assert_eq!(
+            sqlx::query_as::<_, Draft>(DRAFT)
+                .fetch_one(&store.pool)
+                .await
+                .unwrap(),
+            draft
+        );
+        let existing = store.get_workspace("v040-request").await.unwrap();
+        assert_eq!(existing.request.title, "Legacy request");
+        assert!(existing.workbench.is_none());
+        assert_eq!(
+            store
+                .read_request_attachment("v040-request", "v040-material")
+                .await
+                .unwrap(),
+            material
+        );
+        assert_eq!(applied_migration_version(&store.pool).await.unwrap(), 10);
+        assert!(
+            sqlx::query("PRAGMA foreign_key_check")
+                .fetch_all(&store.pool)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        store.close().await;
+    }
+}
+
+#[tokio::test]
 async fn upgrade_downgrade_upgrade_preserves_legacy_writes_and_acp_data() {
     let workspace = TestWorkspace::new().await;
     let old = open_as_v033(&workspace).await;
@@ -233,7 +367,7 @@ async fn existing_development_ledger_is_relocated_without_replaying_migrations()
     let workspace = TestWorkspace::new().await;
     let development = pool(&workspace).await;
     MIGRATOR.run(&development).await.unwrap();
-    assert_eq!(applied_migration_version(&development).await.unwrap(), 21);
+    assert_eq!(applied_migration_version(&development).await.unwrap(), 22);
     legacy_insert(&development, "retained").await;
     development.close().await;
     let store = SqliteFeedbackStore::connect(&workspace.database)
@@ -244,10 +378,146 @@ async fn existing_development_ledger_is_relocated_without_replaying_migrations()
         .fetch_one(&store.pool)
         .await
         .unwrap();
-    assert_eq!(extensions, 11);
+    assert_eq!(extensions, 12);
     assert!(store.get_request("retained").await.is_ok());
     store.close().await;
     open_as_v033(&workspace).await.close().await;
+}
+
+#[tokio::test]
+async fn media_extension_preserves_material_rows_and_legacy_writes_across_downgrade() {
+    use base64::Engine;
+    type MaterialRow = (
+        String,
+        i64,
+        String,
+        String,
+        i64,
+        Vec<u8>,
+        String,
+        Option<String>,
+        Option<String>,
+    );
+    const MATERIAL: &str = "SELECT file_name,byte_size,media_type,sha256,position,contents,created_at,draft_path,published_path FROM request_attachments WHERE id='legacy-material'";
+    let workspace = TestWorkspace::new().await;
+    let prior = pool(&workspace).await;
+    let migrator = Migrator {
+        migrations: Cow::Owned(
+            MIGRATOR
+                .iter()
+                .filter(|migration| migration.version <= 21)
+                .cloned()
+                .collect(),
+        ),
+        ..Migrator::DEFAULT
+    };
+    migrator.run(&prior).await.unwrap();
+    legacy_insert(&prior, "before-media").await;
+    let path = workspace._temp.path().join("old-material.md");
+    let original = b"# Preserved material";
+    tokio::fs::write(&path, original).await.unwrap();
+    sqlx::query("INSERT INTO request_attachments(id,request_id,file_name,byte_size,media_type,sha256,position,contents,created_at,draft_path,published_path) VALUES('legacy-material','before-media','old-material.md',?1,'text/markdown',?2,0,x'',?3,?4,?4)")
+        .bind(original.len() as i64).bind(hex::encode(Sha256::digest(original))).bind(NOW)
+        .bind(path.to_string_lossy().as_ref()).execute(&prior).await.unwrap();
+    let before: MaterialRow = sqlx::query_as(MATERIAL).fetch_one(&prior).await.unwrap();
+    prior.close().await;
+
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_as::<_, MaterialRow>(MATERIAL)
+            .fetch_one(&store.pool)
+            .await
+            .unwrap(),
+        before
+    );
+    // A real PCM16 WAV exercises the newly permitted MIME through production creation.
+    let mut wav = b"RIFF".to_vec();
+    wav.extend(16036u32.to_le_bytes());
+    wav.extend(b"WAVEfmt ");
+    wav.extend(16u32.to_le_bytes());
+    wav.extend(1u16.to_le_bytes());
+    wav.extend(1u16.to_le_bytes());
+    wav.extend(8000u32.to_le_bytes());
+    wav.extend(16000u32.to_le_bytes());
+    wav.extend(2u16.to_le_bytes());
+    wav.extend(16u16.to_le_bytes());
+    wav.extend(b"data");
+    wav.extend(16000u32.to_le_bytes());
+    wav.resize(16044, 0);
+    let app = store.clone().into_application();
+    let mut input = workspace.request(Uuid::now_v7().to_string());
+    input.attachments = vec![RequestAttachmentInput {
+        file_name: "clip.wav".into(),
+        markdown: None,
+        contents_base64: Some(base64::engine::general_purpose::STANDARD.encode(&wav)),
+        path: None,
+    }];
+    let created = app.request_feedback(input).await.unwrap();
+    let material = app
+        .get_feedback_workspace(created.request_id.clone())
+        .await
+        .unwrap()
+        .request_attachments
+        .remove(0);
+    assert_eq!(material.media_type, "audio/wav");
+    store.close().await;
+
+    let old = open_as_v033(&workspace).await;
+    assert_eq!(
+        sqlx::query_as::<_, MaterialRow>(MATERIAL)
+            .fetch_one(&old)
+            .await
+            .unwrap(),
+        before
+    );
+    let media_type: String =
+        sqlx::query_scalar("SELECT media_type FROM request_attachments WHERE id=?1")
+            .bind(&material.attachment_id)
+            .fetch_one(&old)
+            .await
+            .unwrap();
+    assert_eq!(media_type, "audio/wav");
+    legacy_insert(&old, "during-media-downgrade").await;
+    sqlx::query("INSERT INTO request_attachments(id,request_id,file_name,byte_size,media_type,sha256,position,contents,created_at) VALUES('during-material','during-media-downgrade','old-material.md',?1,'text/markdown',?2,0,?3,?4)")
+        .bind(original.len() as i64).bind(hex::encode(Sha256::digest(original))).bind(original.as_slice())
+        .bind(NOW).execute(&old).await.unwrap();
+    assert!(
+        sqlx::query("PRAGMA foreign_key_check")
+            .fetch_all(&old)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    old.close().await;
+
+    let store = SqliteFeedbackStore::connect(&workspace.database)
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_as::<_, MaterialRow>(MATERIAL)
+            .fetch_one(&store.pool)
+            .await
+            .unwrap(),
+        before
+    );
+    assert_eq!(
+        store
+            .read_request_attachment(&created.request_id, &material.attachment_id)
+            .await
+            .unwrap(),
+        wav
+    );
+    assert_eq!(
+        store
+            .read_request_attachment("during-media-downgrade", "during-material")
+            .await
+            .unwrap(),
+        original
+    );
+    assert_eq!(applied_migration_version(&store.pool).await.unwrap(), 10);
+    store.close().await;
 }
 
 #[tokio::test]
@@ -259,7 +529,7 @@ async fn corrupt_or_future_extension_history_is_rejected_without_relocation() {
         if future {
             sqlx::query(
                 "INSERT INTO _sqlx_migrations(version,description,success,checksum,execution_time)
-                VALUES (22,'future',TRUE,X'00',0)",
+                VALUES (23,'future',TRUE,X'00',0)",
             )
             .execute(&development)
             .await
@@ -279,7 +549,7 @@ async fn corrupt_or_future_extension_history_is_rejected_without_relocation() {
         let check = pool(&workspace).await;
         assert_eq!(
             applied_migration_version(&check).await.unwrap(),
-            if future { 22 } else { 21 }
+            if future { 23 } else { 22 }
         );
         let extensions: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='_rambledesk_extensions')",
@@ -301,7 +571,7 @@ async fn future_separate_extension_and_dirty_history_still_block_startup() {
             .unwrap();
         if future {
             sqlx::query("INSERT INTO _rambledesk_extensions(version,description,success,checksum,execution_time)
-                VALUES(22,'future',TRUE,X'00',0)").execute(&store.pool).await.unwrap();
+                VALUES(23,'future',TRUE,X'00',0)").execute(&store.pool).await.unwrap();
         } else {
             sqlx::query("UPDATE _rambledesk_extensions SET success=FALSE WHERE version=18")
                 .execute(&store.pool)
@@ -314,7 +584,7 @@ async fn future_separate_extension_and_dirty_history_still_block_startup() {
             Err(error) => error,
         };
         assert!(if future {
-            matches!(error, StorageOpenError::NewerDatabase { applied: 22, .. })
+            matches!(error, StorageOpenError::NewerDatabase { applied: 23, .. })
         } else {
             matches!(
                 error,

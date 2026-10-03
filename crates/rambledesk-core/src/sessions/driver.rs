@@ -106,6 +106,11 @@ pub trait AgentSessionDriver: Send + Sync {
 
 #[async_trait]
 pub trait AgentSessionConnection: Send + Sync {
+    /// Arm cancellation for a new turn before it becomes visible as running.
+    /// The application calls this synchronously before spawning prompt delivery;
+    /// cancellation after this boundary must also cover a not-yet-polled prompt.
+    fn prepare_prompt(&self) {}
+
     /// Public runtime instructions actually attached by this connection's driver.
     /// These are inspectable context, not a persisted conversation message.
     fn builtin_instructions(&self) -> Option<String> {
@@ -140,6 +145,8 @@ pub trait AgentSessionConnection: Send + Sync {
         }
         self.prompt(&text).await
     }
+    /// Return once cancellation has been dispatched, without waiting for the
+    /// prompt to finish. Core holds the lifecycle lease until dispatch completes.
     async fn cancel(&self) -> Result<(), AgentDriverError>;
     async fn respond_interaction(
         &self,

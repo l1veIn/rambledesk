@@ -228,13 +228,15 @@ describe('Managed session rendering', () => {
       snapshot, config: { id: 'config', name: 'Agent', host_id: 'dsh', protocol: 'acp', enabled: true,
         command: 'agent', args: [], env: { TOKEN: 'private-permission-token' }, created_at: 'today', updated_at: 'today' },
       interactions: [
-        { kind: 'permission', request_id: 'active', session_id: 'local-details', title: 'Run command?', details: 'command: cat /repo/input\nTOKEN=private-permission-token\n<script>untrusted()</script>', options: [{ option_id: 'allow', name: 'Allow once', kind: 'allow_once' }] },
+        { kind: 'permission', tool_call_id: 'exact-tool-call', request_id: 'active', session_id: 'local-details', title: 'Run command?', details: 'command: cat /repo/input\nTOKEN=private-permission-token\n<script>untrusted()</script>', options: [{ option_id: 'allow', name: 'Allow once', kind: 'allow_once' }] },
         { kind: 'permission', request_id: 'foreign', session_id: 'another-session', title: 'Foreign permission', details: 'Foreign operation details', options: [] },
         { kind: 'permission', request_id: 'queued', session_id: 'local-details', title: 'Queued permission', details: 'Queued operation details', options: [] },
       ],
       onPrompt: action, onStart: action, onCancel: action, onRespondInteraction: action,
     } })
     expect(body).toContain('Operation details')
+    expect(body).toContain('Tool call ID: exact-tool-call')
+    expect(body).not.toContain('The agent did not provide operation details.')
     expect(body).toMatch(/<details[^>]*open/)
     expect(body).toContain('command: cat /repo/input\nTOKEN=[redacted]')
     expect(body).toMatch(/&lt;script(?:&gt;|>)untrusted\(\)&lt;\/script(?:&gt;|>)/)
@@ -308,7 +310,7 @@ describe('Managed session rendering', () => {
         { id: 'two', session_id: 'local-two', kind: 'agent_message', text: 'Foreign project output', tool_call_id: null, created_at: '2026-09-04' },
       ],
       interactions: [
-        { kind: 'permission', request_id: 'first', session_id: 'local-one', title: 'First permission title', details: null, options: [{ option_id: 'once', name: 'Allow precisely once', kind: 'allow_once' }] },
+        { kind: 'permission', tool_call_id: 'unknown-tool-call', request_id: 'first', session_id: 'local-one', title: 'First permission title', details: null, options: [{ option_id: 'once', name: 'Allow precisely once', kind: 'allow_once' }] },
         { kind: 'permission', request_id: 'foreign', session_id: 'local-two', title: 'Foreign permission title', details: null, options: [] },
         { kind: 'permission', request_id: 'second', session_id: 'local-one', title: 'Second permission title', details: null, options: [] },
       ],
@@ -322,6 +324,8 @@ describe('Managed session rendering', () => {
     expect(body).not.toContain('Second permission title')
     expect(body).not.toContain('Foreign permission title')
     expect(body).not.toContain('Operation details')
+    expect(body).toContain('Tool call ID: unknown-tool-call')
+    expect(body).toContain('The agent did not provide operation details.')
     expect(runtimeAction).not.toHaveBeenCalled()
   })
 })

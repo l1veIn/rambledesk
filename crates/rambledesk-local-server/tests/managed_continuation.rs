@@ -194,6 +194,39 @@ impl Fixture {
         })
         .await
     }
+    async fn restart_after_exit(&self, session: &str, previous_instance: &str) -> String {
+        // Delivery records the continuation prompt, before the fixture emits
+        // CONTINUED and exits. Starting before EOF may reuse that live process;
+        // wait for its observed exit and completed retirement before resuming.
+        self.wait_for(session, |snapshot| {
+            snapshot.runtime.connection == SessionConnectionState::Disconnected
+                && snapshot.runtime.activity == SessionActivityState::Idle
+                && snapshot.runtime.instance_id.is_none()
+        })
+        .await;
+        let resumed = self
+            .app
+            .start_session(ManagedSessionInput {
+                session_id: session.into(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            resumed.runtime.connection,
+            SessionConnectionState::Connected
+        );
+        assert_eq!(resumed.runtime.activity, SessionActivityState::Idle);
+        assert!(matches!(
+            resumed.session.management,
+            SessionManagement::Managed { remote_session_id: Some(ref remote), .. } if remote == "original"
+        ));
+        let instance = resumed.runtime.instance_id.expect("resumed instance");
+        assert_ne!(
+            instance, previous_instance,
+            "resume must replace the exited process"
+        );
+        instance
+    }
     async fn close(self) {
         self.app.shutdown().await.unwrap();
         self.server.shutdown().await.unwrap();
@@ -280,6 +313,12 @@ async fn scoped_command_capability_waits_for_idle_then_continues_the_original_se
 async fn disconnect_after_feedback_read_is_delivered_and_never_blindly_replayed() {
     let fixture = Fixture::new("fail_continue").await;
     let session = fixture.create("One").await;
+    let initial_instance = fixture
+        .snapshot(&session)
+        .await
+        .runtime
+        .instance_id
+        .unwrap();
     let request = fixture.request(&session, false).await;
     fixture.submitted(&request).await;
     let delivered = fixture.continued(&session, &request).await;
@@ -288,12 +327,8 @@ async fn disconnect_after_feedback_read_is_delivered_and_never_blindly_replayed(
         FeedbackDeliveryState::Delivered
     );
     fixture
-        .app
-        .start_session(ManagedSessionInput {
-            session_id: session.clone(),
-        })
-        .await
-        .unwrap();
+        .restart_after_exit(&session, &initial_instance)
+        .await;
     tokio::time::sleep(Duration::from_millis(600)).await;
     assert_eq!(
         fixture.snapshot(&session).await.deliveries[0].state,
@@ -318,23 +353,20 @@ async fn disconnect_after_feedback_read_is_delivered_and_never_blindly_replayed(
 async fn later_submitted_feedback_is_sent_after_an_earlier_continuation_exits() {
     let fixture = Fixture::new("fail_continue").await;
     let session = fixture.create("One").await;
+    let initial_instance = fixture
+        .snapshot(&session)
+        .await
+        .runtime
+        .instance_id
+        .unwrap();
     let first = fixture.request(&session, false).await;
     fixture.submitted(&first).await;
     fixture.continued(&session, &first).await;
     fixture
         .delivered(&session, FeedbackDeliveryState::Delivered)
         .await;
-    fixture
-        .app
-        .start_session(ManagedSessionInput {
-            session_id: session.clone(),
-        })
-        .await
-        .unwrap();
-    fixture
-        .wait_for(&session, |snapshot| {
-            snapshot.runtime.connection == SessionConnectionState::Connected
-        })
+    let resumed_instance = fixture
+        .restart_after_exit(&session, &initial_instance)
         .await;
     let next = fixture.request(&session, false).await;
     fixture.submitted(&next).await;
@@ -371,12 +403,8 @@ async fn later_submitted_feedback_is_sent_after_an_earlier_continuation_exits() 
     .await
     .unwrap();
     fixture
-        .app
-        .start_session(ManagedSessionInput {
-            session_id: session,
-        })
-        .await
-        .unwrap();
+        .restart_after_exit(&session, &resumed_instance)
+        .await;
     fixture.close().await;
 }
 

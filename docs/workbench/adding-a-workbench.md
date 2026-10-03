@@ -25,7 +25,7 @@ pnpm check
 | 位置 | 用途 |
 | --- | --- |
 | `crates/rambledesk-core/src/workbenches/proposal_review.rs` | 强类型 Data / State / Result、发现/schema/example、输入与结果规则、业务测试 |
-| `apps/desktop/src/lib/workbench/definitions/proposal_review/definition.ts` | 输入识别、状态解码、完成条件、布局、字段适配器、预览示例和视图绑定 |
+| `apps/desktop/src/lib/workbench/definitions/proposal_review/definition.ts` | 输入识别、状态解码、完成条件、布局、字段适配器、预览示例、可选引导和视图绑定 |
 | 同目录 `View.svelte` | 业务展示与编辑，通过 `context.host` 修改状态；启用全屏时提供宿主入口 |
 | 同目录 `definition.test.ts` | 完成条件、字段替换和材料失效测试 |
 | `playground/workbenches/fixtures/proposal_review.json` | 正常请求入口的体验输入 |
@@ -49,7 +49,23 @@ Rust 注册项声明模块、wire 身份、Data、State、Result 和 DTO 导出�
 
 ## 3. 编写 definition 与业务视图
 
-前端 definition 负责 `accepts`、`decodeState`、`hasInput`、`complete`、可选提交提示、`layout`、`fields`、`loadView` 和 `examples`。解码允许合法未完成状态，完成条件与后端一致。视图通过懒加载回调导入，纯规则与后台输入无需载入 Svelte。
+前端 definition 负责 `accepts`、`decodeState`、`hasInput`、`complete`、可选提交提示、`layout`、`fields`、`loadView`、`examples` 和可选 `guide`。解码允许合法未完成状态，完成条件与后端一致。视图通过懒加载回调导入，纯规则与后台输入无需载入 Svelte。
+
+复杂操作需要引导时，在同一个 definition 对象中添加纯数据配置，文案按 `[zh-CN, en]` 顺序填写：
+
+```ts
+guide: {
+  version: 1,
+  steps: [{
+    id: 'source',
+    target: '[data-tour="proposal-source"]',
+    title: ['查看方案', 'Read the proposal'],
+    body: ['先阅读方案，再补充意见。', 'Read the proposal, then add your feedback.'],
+  }],
+},
+```
+
+在业务视图中给真实区域添加对应的 `data-tour="proposal-source"` 标记。步骤 ID 与目标应稳定，首次就能定位，不需要先执行业务动作。共享入口自动提供首次显示、按类型和引导版本记录及 Show guide，无需中央引导注册、额外引导文件或运行时 UI 导入。简单工作台省略 `guide`，脚手架默认也不生成引导。引导版本只在需要重新介绍交互时升级，不能与请求合同版本混用。完整行为见[首次使用引导](onboarding.md)。
 
 `View.svelte` 只接收 `WorkbenchViewContext`：工作区、状态、锁定/只读条件及宿主能力。通过 `context.host.updateState(next)` 更新状态，`quote(text)` 引用到正文。公共材料、正文、保存队列和发布由宿主提供。历史使用同一视图的只读模式。
 

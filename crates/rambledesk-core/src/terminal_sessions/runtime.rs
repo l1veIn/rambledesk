@@ -499,5 +499,43 @@ fn default_shell() -> String {
 
 fn display_path(path: &Path) -> String {
     let value = path.to_string_lossy();
-    value.strip_prefix(r"\\?\").unwrap_or(&value).to_owned()
+    #[cfg(windows)]
+    {
+        if let Some(unc) = value.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{unc}");
+        }
+        if let Some(drive) = value.strip_prefix(r"\\?\") {
+            return drive.to_owned();
+        }
+    }
+    value.into_owned()
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::display_path;
+    use std::path::Path;
+
+    #[cfg(windows)]
+    #[test]
+    fn canonical_working_directories_remain_absolute() {
+        for (input, expected) in [
+            (r"C:\project", r"C:\project"),
+            (r"\\?\C:\project", r"C:\project"),
+            (r"\\server\share\project", r"\\server\share\project"),
+            (r"\\?\UNC\server\share\project", r"\\server\share\project"),
+        ] {
+            let actual = display_path(Path::new(input));
+            assert_eq!(actual, expected);
+            assert!(Path::new(&actual).is_absolute(), "{input} became {actual}");
+        }
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn non_windows_path_text_is_preserved() {
+        for input in ["/tmp/project", r"\\?\UNC\server\share\project"] {
+            assert_eq!(display_path(Path::new(input)), input);
+        }
+    }
 }

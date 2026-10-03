@@ -26,12 +26,14 @@
 
 以下保留为有前提的设计方向，不作为已实现能力：
 
-- 正式 ACP 连接的 idle GC：先建立反馈创建、等待与投递的保活合同及竞争保护，再验证原 remote ID 恢复；当前 disconnected 的投递 worker 不主动启动 Agent。
+- 正式 ACP 连接的 idle GC：先建立反馈创建、等待与投递的保活合同及竞争保护，再验证原 remote ID 恢复；现有 worker 已能为合法 pending 反馈初始化原会话，自动回收仍需区分用户显式停止的边界，不能沿用过期的离线投递假设。
 - 内部 scope 简化：先把撤销、排空与隔离证据迁到 JSON 入口，再移除旧的内部形态。
 - 完整包体与超大历史：先做 profiling，再决定拆包、内存窗口或虚拟列表；不能用一般规模的测量保证无限展开历史。
 
 ## 按任务复验
 
+- [0.5.0-rc.1 源码与 Windows 原生验收](RELEASE_0_5_0_RC1_ACCEPTANCE.md)：2026-10-03 固定提交 `456dfeb` 的 51 提交审查、三平台 CI、真实 Agent 两轮、表格/音频恢复与发布、官方 0.4.0 数据升级及备份回退；正式候选产物按独立判据记录。
+- [视觉反馈与差异评审](WORKBENCH_VISUAL_DIFF_ACCEPTANCE.md)：2026-10-02 的 Windows 源码检查、固定材料浏览器观察和容量边界。
 - [隔离反馈夹具](FEEDBACK_ACCEPTANCE.md)：真实 HTTP、SQLite、CAS、发布包与浏览器下载。
 - [性能测量](PERFORMANCE_ACCEPTANCE.md)：固定构建、数据集、预算和资源观察。
 - [ACP 后端探针](../ACP_BACKEND_PROBE.md)：真实 Agent、双会话隔离、续接和恢复；fixture 不是模型证据。

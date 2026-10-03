@@ -238,6 +238,7 @@ import type { SettingsSection } from './lib/domain/settingsSection'
     updateState: (state) => { const current = draftSession.snapshot(); updateDraft(reconcileFieldSpeechSegments(current, withWorkbenchState(current, state))) },
     isEditable: () => !workspaceSession.isTerminal() && !feedbackReadOnly && !$workspaceSession.interactionLocked,
     onBusy: workbenchBusyChanged,
+    persistGeneratedAttachment: (requestId, input) => attachmentController.persistGeneratedAttachment(requestId, input),
   })
   $: workbenchController = workbenchLifecycle.forWorkspace($workspaceSession.workspace)
   onMount(() => () => workbenchLifecycle.dispose())
@@ -779,19 +780,18 @@ import type { SettingsSection } from './lib/domain/settingsSection'
   const cookPreviewOnly = cookingController.cookPreviewOnly
   const restoreOriginalAfterCook = cookingController.restoreOriginal
 
-  async function prepareWorkbench(requestId: string): Promise<void> {
+  async function prepareWorkbench(requestId: string, intent: 'submit' | 'approve' | 'cancel' = 'submit'): Promise<void> {
     if ($workspaceShell.pendingViewKey !== null || $workspaceSession.loadingWorkspace || workbenchOperationPending()) throw new Error(tr('Wait for the current operation to finish.'))
     preparingWorkbenchRequestId = requestId
     try {
       // Resource preparation is request-bound and independent of the currently mounted view.
       await tick()
-      await workbenchLifecycle.prepareSubmission(requestId)
+      await workbenchLifecycle.prepareSubmission(requestId, intent)
       await tick()
     } finally {
       if (preparingWorkbenchRequestId === requestId) preparingWorkbenchRequestId = null
     }
   }
-
   const publisherController = createPublisherController({
     transport: applicationTransport,
     tr,

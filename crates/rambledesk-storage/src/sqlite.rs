@@ -41,6 +41,7 @@ mod request_scope;
 mod resolve_ops;
 mod session_ops;
 mod submission_ops;
+mod visual_feedback_ops;
 mod workspace_ops;
 
 pub use paths::{default_app_data_root, default_database_path, default_library_path};

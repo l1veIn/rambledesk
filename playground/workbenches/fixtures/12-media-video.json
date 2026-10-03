@@ -1,0 +1,15 @@
+{
+  "title": "视频审阅",
+  "what_happened": "请主动播放这份已冻结的八秒真实 WebM 测试材料，在运动图案的时间点或区间留下意见。检查点击批注定位、区间两端、排序、只读回看和全屏切换。不会自动播放，不需要审批结论。",
+  "workbench": {
+    "type": "media_review", "version": 1,
+    "data": {
+      "title": "审阅测试图案的运动与声音", "source_version": "playground-media-video-v1",
+      "media_kind": "video", "media_file_name": "review-motion.webm", "duration_ms": 8000
+    }
+  },
+  "attachments": [
+    { "file_name": "review-motion.webm", "path": "materials/media/review-motion.webm" },
+    { "file_name": "media-review.md", "path": "materials/media-review.md" }
+  ]
+}

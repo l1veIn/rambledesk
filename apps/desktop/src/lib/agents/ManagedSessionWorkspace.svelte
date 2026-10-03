@@ -185,7 +185,7 @@
 </script>
 
 <section class="appearance-surface flex h-full min-h-0 flex-col bg-background @container" aria-label={tr('Agent session')} data-managed-session-id={snapshot.session.session_id}>
-  <header class="flex min-h-12 shrink-0 items-center gap-3 border-b px-5 py-2">
+  <header class="workbench-column-header flex items-center gap-3 border-b px-5">
     <h2 class="m-0 min-w-0 flex-1 truncate text-sm font-medium">{snapshot.session.title}</h2>
     {#key snapshot.session.session_id}<SessionInstructionsDialog instructions={snapshot.runtime.builtin_instructions} connection={snapshot.runtime.connection} />{/key}
     {#if onOpenRamble}<Button variant="ghost" size="sm" class="h-7 shrink-0 gap-1.5 text-xs" onclick={() => void run('ramble', onOpenRamble!)}>{tr('View Ramble')}<ArrowUpRight class="size-3.5" /></Button>{/if}
@@ -216,6 +216,9 @@
             onRespond={response => respondInteraction(inputInteraction.request_id, { kind: inputInteraction.kind, response })} />
         {/key}
       {:else}
+      {#if interaction.tool_call_id}
+        <p class="mb-0 mt-2 break-all font-mono text-[11px] text-muted-foreground">{tr('Tool call ID')}: {redactAgentMessage(interaction.tool_call_id, envText)}</p>
+      {/if}
       {#if interactionDetails.trim()}
         {#key interaction.request_id}
           <details open class="mt-3 rounded-md border border-amber-500/25 bg-background/50 px-3 py-2 text-xs">
@@ -223,6 +226,8 @@
             <pre class="mb-0 mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5">{interactionDetails}</pre>
           </details>
         {/key}
+      {:else}
+        <p class="mb-0 mt-3 text-xs text-muted-foreground">{tr('The agent did not provide operation details.')}</p>
       {/if}
       <div class="mt-3 flex flex-wrap gap-2">
         {#each interaction.options as option (option.option_id)}<Button variant={option.kind.toLowerCase().startsWith('reject') ? 'outline' : 'secondary'} size="sm" disabled={busy || lifecyclePending || interactionPending || !actions.canCancel} onclick={() => void respondInteraction(interaction.request_id, { kind: 'permission', option_id: option.option_id })}>{redactAgentMessage(option.name, envText)}</Button>{/each}

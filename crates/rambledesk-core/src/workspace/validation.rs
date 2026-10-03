@@ -92,12 +92,16 @@ pub(crate) fn normalize_image_file_name(file_name: &str, media_type: &str) -> St
 
 /// Detect a media type from attachment contents and file name.
 ///
-/// Images are detected by magic bytes; PDF by its magic prefix. Other common
+/// Images and supported audio/video containers are detected by magic bytes;
+/// audio/video also require matching filenames. PDF uses its magic prefix. Other common
 /// document types are mapped by extension. Unknown files fall back to
 /// `application/octet-stream` so the user can still attach them.
 pub(crate) fn detect_media_type(contents: &[u8], file_name: &str) -> &'static str {
     if let Some(image) = detect_image_media_type(contents) {
         return image;
+    }
+    if let Some(media) = super::media::detect_playable_media_type(contents, file_name) {
+        return media;
     }
     if contents.starts_with(b"%PDF-") {
         return "application/pdf";

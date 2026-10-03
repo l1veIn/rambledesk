@@ -258,13 +258,39 @@ async fn first_send_and_discard_have_one_lifecycle_winner() {
 
 #[tokio::test]
 async fn simultaneous_first_sends_do_not_publish_two_human_messages() {
-    let (dir, store, _driver, app, config) = setup().await;
+    async fn wait_for_idle(app: &SessionApplication, session: &ManagedSessionSnapshot) {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while app
+                .get_session(target(session))
+                .await
+                .unwrap()
+                .runtime
+                .activity
+                != SessionActivityState::Idle
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("released prompt did not finish");
+    }
+
+    let (dir, store, driver, app, config) = setup().await;
     let ready = app.prepare_session(prepare(&dir, &config)).await.unwrap();
+    let connection = driver.connections.lock().unwrap()[0].clone();
+    // Keep the admitted turn running while both callers compete. An immediate
+    // EndTurn can otherwise make the later caller a valid, sequential next turn.
+    connection.hold_prompt.store(true, Ordering::SeqCst);
     let (first, second) = tokio::join!(
         app.send_prompt(prompt(&ready)),
         app.send_prompt(prompt(&ready))
     );
     assert_ne!(first.is_ok(), second.is_ok());
+    let sent = match (first, second) {
+        (Ok(sent), Err(SessionError::Busy)) | (Err(SessionError::Busy), Ok(sent)) => sent,
+        outcome => panic!("expected one admitted prompt and one Busy result: {outcome:?}"),
+    };
+    assert_eq!(sent.runtime.activity, SessionActivityState::Running);
     let activities = store
         .list_session_activity(&ready.session.session_id, None, 100)
         .await
@@ -275,6 +301,38 @@ async fn simultaneous_first_sends_do_not_publish_two_human_messages() {
             .filter(|row| row.kind == SessionActivityKind::UserMessage)
             .count(),
         1
+    );
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while connection.prompts.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("admitted prompt did not reach the driver");
+    assert_eq!(connection.prompts.load(Ordering::SeqCst), 1);
+
+    connection.hold_prompt.store(false, Ordering::SeqCst);
+    connection.prompt_finish.notify_one();
+    wait_for_idle(&app, &ready).await;
+    app.send_prompt(prompt(&ready)).await.unwrap();
+    wait_for_idle(&app, &ready).await;
+    assert_eq!(connection.prompts.load(Ordering::SeqCst), 2);
+    let activities = store
+        .list_session_activity(&ready.session.session_id, None, 100)
+        .await
+        .unwrap();
+    let users = activities
+        .iter()
+        .filter(|row| row.kind == SessionActivityKind::UserMessage)
+        .collect::<Vec<_>>();
+    assert_eq!(users.len(), 2);
+    assert_ne!(users[0].turn_id, users[1].turn_id);
+    assert_eq!(
+        activities
+            .iter()
+            .filter(|row| row.text == "Turn finished: EndTurn")
+            .count(),
+        2
     );
     app.shutdown().await.unwrap();
     store.close().await;

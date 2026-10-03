@@ -20,6 +20,8 @@ use serde::{Deserialize, Serialize};
 pub use state::*;
 use ts_rs::TS;
 include!("workbenches/registry.rs");
+pub use media_review::validate_media_review_material;
+pub use visual_feedback::{validate_visual_feedback_material, visual_feedback_image_dimensions};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema, TS)]
 #[serde(deny_unknown_fields)]
 pub struct WorkbenchSpec {

@@ -1,0 +1,9 @@
+{
+  "title": "视觉反馈 · 图片批注",
+  "what_happened": "请在随请求保存的简单界面草图上圈出需要调整的部分，画出改动方向并补充意见，检查草稿和生成图片。",
+  "workbench": {
+    "type": "visual_feedback", "version": 1,
+    "data": { "title": "给界面草图一些视觉指引", "source_version": "playground-visual-image-v1", "width": 640, "height": 400, "background_color": "#ffffff", "image_file_name": "visual-background.png" }
+  },
+  "attachments": [{ "file_name": "visual-background.png", "path": "materials/visual-background.png" }, { "file_name": "visual-feedback.md", "path": "materials/visual-feedback.md" }]
+}

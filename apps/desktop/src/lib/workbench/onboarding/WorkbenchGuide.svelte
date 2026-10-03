@@ -9,11 +9,13 @@
   import { useRequestSpeechTools } from '../../speech/requestSpeechToolsContext'
   import SpotlightTour from './SpotlightTour.svelte'
   import { getWorkbenchTour, type WorkbenchTour } from './workbenchTours'
+  import type { WorkbenchDefinition } from '../definitions/contracts'
   import { hasSeenWorkbenchTour, markWorkbenchTourSeen } from './workbenchTourSeen'
 
-  export let kind: string
+  export let definition: Pick<WorkbenchDefinition, 'type' | 'guide'> | null = null
   export let requestId: string
   export let disabled = false
+  export let ready = true
   export let scope: HTMLElement | undefined = undefined
 
   const voiceState = useVoiceInput()?.state ?? unavailableVoiceInputState
@@ -26,8 +28,8 @@
   let generation = 0
   let pendingModal: MutationObserver | undefined
 
-  $: tour = getWorkbenchTour(kind, $locale)
-  $: locked = disabled || $voiceState.recording || $tidyState.busy
+  $: tour = getWorkbenchTour(definition, $locale)
+  $: locked = disabled || !ready || $voiceState.recording || $tidyState.busy
   $: considerVisit(tour, requestId, locked, scope, mounted)
 
   function cancelPending() {

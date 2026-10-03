@@ -17,7 +17,7 @@
 | --- | --- | --- | --- |
 | Requests、Host Sessions、列表与详情投影 | **Automated** | **Automated** | Tauri 与 HTTP Application Transport conformance、Web ready/refetch 与 session auth 已覆盖。 |
 | TipTap Feedback Draft、autosave 与 revision/CAS | **Automated**；发布前仍做 **Manual** 编辑回归 | **Automated**；发布前仍做 **Manual** 多标签页/重连回归 | 两端使用同一 `document_json` 真源与 application mutation；浏览器不是第二份 Draft。 |
-| 六种正式工作台与共享输入字段 | **Automated**；设备输入仍做 **Manual** 回归 | **Automated**；真实浏览器输入仍做 **Manual** 回归 | 当前目录见[协议](PROTOCOL.md#工作台发现与类型合同)。正文与类型交互状态同 revision 保存；字段语音、附件跟随输入目标，不能把桌面设备能力外推到 Web。 |
+| 十种正式工作台与共享输入字段 | **Automated**；设备输入仍做 **Manual** 回归 | **Automated**；真实浏览器输入仍做 **Manual** 回归 | 当前目录见[协议](PROTOCOL.md#工作台发现与类型合同)。正文与类型交互状态同 revision 保存；字段语音、附件跟随输入目标，不能把桌面设备能力外推到 Web。 |
 | 网页 DOM 选择、元素批注与独立评审页签 | **Automated**；原生 WebView 嵌入仍做 **Manual** 回归 | **Automated**；Chrome/Safari/真实触屏仍做 **Manual** 回归 | 桌面浏览器已验证跨 origin bridge、SPA、滚动锚点及固定视口。默认普通工作台，网页工具栏“选择元素”旁的全屏评审按钮打开独立页签，会话导航始终可用；页签往返保留草稿和网页状态。底部固定批注只显示编号标题和意见框，保留输入工具、删除与收起，捕获上下文仍存入数据并可在终态历史展示；设备按钮只有图标与 tooltip，手机画布固定居中。这些布局交互需按当前版本回归。页面需允许 iframe，跨源页面需安装 bridge；未连接时仅预览，禁止嵌入时需打开原页面，再用整体意见和可用附件工具反馈。详见[网页评审](workbench/web-review.md)。 |
 | 终端 CLI 试用 | **Automated**；原生输入仍做 **Manual** 回归 | **Automated**；真实浏览器输入仍做 **Manual** 回归 | 两端调用同一 PTY 合同，进程位于 Backend Runtime 主机；从体验 Markdown 复制命令，主动开始或重开，最多保留 16 轮，选中输出引用到正文，提交前停止并排空最终输出。Windows ConPTY 有真实回归；Unix 独立后台进程组完整回收仍待补齐，macOS/Linux 真实 PTY 与物理手机仍待验。具体证据见[终端试用](workbench/terminal.md)。 |
 | 条目拖动排序、名称编辑与删除恢复 | **Automated**；真实输入做 **Manual** 回归 | **Automated**；触屏拖动做 **Manual** 回归 | 保存顺序、名称修改与删除状态，提交返回最终条目及删除 ID；未完成名称可存草稿，不能提交。普通视图无全屏入口，键盘和指针操作分别体验。见[排序材料](../playground/workbenches/materials/sort.md)。 |

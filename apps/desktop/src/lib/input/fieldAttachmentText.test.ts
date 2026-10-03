@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { fieldAttachmentText, mapFieldAttachmentTextRanges, removeFieldAttachment, removeWorkbenchAttachmentReferences, replaceFieldAttachmentText } from './fieldAttachmentText'
+import { fieldAttachmentText, mapFieldAttachmentTextRanges, removeFieldAttachment, replaceFieldAttachmentText } from './fieldAttachmentText'
+import { removeWorkbenchAttachmentReferences } from '../workbench/fields/attachmentReferences'
 import { snapshotFeedbackDraftMarkdown } from '../feedbackDraftDocument'
 import { readWorkbenchState, withWorkbenchState } from '../workbenchState'
 

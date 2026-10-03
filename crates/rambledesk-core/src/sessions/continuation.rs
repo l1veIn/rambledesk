@@ -3,9 +3,11 @@ use crate::ApplicationResourceKey;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     sync::{Arc, atomic::Ordering},
     time::Duration,
 };
+use tokio::task::JoinSet;
 use ts_rs::TS;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
@@ -41,8 +43,18 @@ impl SessionApplication {
         }
         let app = self.clone();
         *worker = Some(tokio::spawn(async move {
+            let mut attempted_starts = HashSet::new();
+            let mut starting_sessions = HashSet::new();
+            let mut starts = JoinSet::new();
             while !app.closing.load(Ordering::SeqCst) {
-                if let Err(error) = app.deliver_pending_feedback().await {
+                if let Err(error) = app
+                    .deliver_pending_feedback(
+                        &mut attempted_starts,
+                        &mut starting_sessions,
+                        &mut starts,
+                    )
+                    .await
+                {
                     // Keep a safe, visible diagnostic on affected live sessions. The
                     // durable queue remains authoritative and the next pass can retry reads.
                     let entries = app.entries.lock().await.clone();
@@ -54,17 +66,32 @@ impl SessionApplication {
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_millis(250)) => {},
                     _ = app.delivery_wake.notified() => {},
+                    result = starts.join_next(), if !starts.is_empty() => {
+                        if let Some(Ok(session_id)) = result {
+                            starting_sessions.remove(&session_id);
+                        }
+                    },
                 }
             }
+            // Shutdown already advanced every entry's interrupt epoch. Join the
+            // canonical owners so no launch outlives application cleanup.
+            while starts.join_next().await.is_some() {}
         }));
         self.changed(vec![ApplicationResourceKey::All]);
         Ok(())
     }
 
-    async fn deliver_pending_feedback(&self) -> Result<(), SessionError> {
+    async fn deliver_pending_feedback(
+        &self,
+        attempted_starts: &mut HashSet<String>,
+        starting_sessions: &mut HashSet<String>,
+        starts: &mut JoinSet<String>,
+    ) -> Result<(), SessionError> {
         self.reconcile_closed_sessions().await?;
         let repository = self.deliveries.as_ref().ok_or(SessionError::InvalidInput)?;
-        for delivery in repository.list_pending_deliveries().await? {
+        let pending = repository.list_pending_deliveries().await?;
+        attempted_starts.retain(|request| pending.iter().any(|item| &item.request_id == request));
+        for delivery in pending {
             if self.closing.load(Ordering::SeqCst) {
                 break;
             }
@@ -87,6 +114,12 @@ impl SessionApplication {
             {
                 continue;
             }
+            if !self
+                .prepare_feedback_connection(&delivery, attempted_starts, starting_sessions, starts)
+                .await?
+            {
+                continue;
+            }
             let input = SendManagedPromptInput {
                 session_id: delivery.session_id.clone(),
                 text: format!(
@@ -104,6 +137,130 @@ impl SessionApplication {
             }
         }
         Ok(())
+    }
+
+    async fn prepare_feedback_connection(
+        &self,
+        delivery: &FeedbackDelivery,
+        attempted_starts: &mut HashSet<String>,
+        starting_sessions: &mut HashSet<String>,
+        starts: &mut JoinSet<String>,
+    ) -> Result<bool, SessionError> {
+        let session_id = delivery.session_id.as_str();
+        let entry = self.entry(session_id).await;
+        let epoch = *entry.interrupt.borrow();
+        let input = ManagedSessionInput {
+            session_id: session_id.into(),
+        };
+        let snapshot = match self.get_session(input.clone()).await {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                self.record_feedback_start_failure(session_id, epoch, &error)
+                    .await;
+                return Ok(false);
+            }
+        };
+        if snapshot.deleting
+            || snapshot.session.is_prepared()
+            || snapshot.runtime.activity != SessionActivityState::Idle
+            || !snapshot.interactions.is_empty()
+        {
+            return Ok(false);
+        }
+        if snapshot.runtime.connection == SessionConnectionState::Connected {
+            return Ok(true);
+        }
+        if attempted_starts.contains(&delivery.request_id)
+            || starting_sessions.contains(session_id)
+            || entry
+                .stopped_feedback
+                .lock()
+                .await
+                .as_ref()
+                .is_none_or(|blocked| blocked.contains(&delivery.request_id))
+            || !matches!(
+                snapshot.runtime.connection,
+                SessionConnectionState::Stopped | SessionConnectionState::Disconnected
+            )
+            || snapshot.runtime.instance_id.is_some()
+            || snapshot.recovery.as_ref().is_some_and(|recovery| {
+                recovery.session_id != session_id
+                    || recovery.status == SessionRecoveryStatus::Unclosed
+                    || recovery.active_turn_id.is_some()
+            })
+            || matches!(&snapshot.session.management, SessionManagement::Managed { remote_session_id: None, .. }
+                if !snapshot.activities.is_empty() || snapshot.recovery.as_ref().is_some_and(|recovery| recovery.status != SessionRecoveryStatus::NeverStarted))
+        {
+            return Ok(false);
+        }
+        // Launch each session independently: a slow ACP handshake must not hold
+        // another session's connected outbox. Canonical lifecycle/epoch guards
+        // still arbitrate explicit starts, Stop, deletion and shutdown.
+        // Consume admission only when scheduling: a new submission seen during
+        // an older interrupted task's cleanup must remain eligible next pass.
+        attempted_starts.insert(delivery.request_id.clone());
+        starting_sessions.insert(session_id.to_owned());
+        let app = self.clone();
+        let request_id = delivery.request_id.clone();
+        starts.spawn(async move {
+            let session_id = input.session_id.clone();
+            if let Err(error) = app.start_feedback_session(input, epoch, request_id).await {
+                app.record_feedback_start_failure(&session_id, epoch, &error)
+                    .await;
+            }
+            app.delivery_wake.notify_one();
+            session_id
+        });
+        Ok(false)
+    }
+
+    async fn record_feedback_start_failure(
+        &self,
+        session_id: &str,
+        epoch: u64,
+        error: &SessionError,
+    ) {
+        if matches!(
+            error,
+            SessionError::Interrupted
+                | SessionError::NotConnected
+                | SessionError::ShuttingDown
+                | SessionError::Busy
+                | SessionError::NotManaged
+                | SessionError::Repository(SessionRepositoryError::SessionNotFound)
+        ) {
+            return;
+        }
+        let entry = self.entry(session_id).await;
+        let _lifecycle = entry.lifecycle.lock().await;
+        let workable = self.require_workable(session_id).await;
+        if self.closing.load(Ordering::SeqCst)
+            || epoch != *entry.interrupt.borrow()
+            || matches!(
+                workable,
+                Err(SessionError::NotConnected
+                    | SessionError::NotManaged
+                    | SessionError::Repository(SessionRepositoryError::SessionNotFound))
+            )
+        {
+            return;
+        }
+        let mut live = entry.live.lock().await;
+        // Driver errors already use canonical failure handling. A stale preflight
+        // error must never replace a newer connected owner or a retained instance.
+        if !matches!(
+            live.runtime.connection,
+            SessionConnectionState::Stopped | SessionConnectionState::Disconnected
+        ) || live.runtime.instance_id.is_some()
+            || live.runtime.activity != SessionActivityState::Idle
+        {
+            return;
+        }
+        live.runtime.connection = SessionConnectionState::Failed;
+        live.runtime.last_error = Some(error.to_string());
+        live.runtime.failure = error.agent_failure(AgentFailureStage::Launch);
+        drop(live);
+        self.session_changed(session_id);
     }
 
     pub async fn resolve_feedback_delivery(

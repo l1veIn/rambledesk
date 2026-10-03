@@ -4,6 +4,7 @@ import { render } from 'svelte/server'
 
 import type { HostProfile } from '$lib/domain/hostProfile'
 import { previewFixtures } from '$lib/preview/previewFixtures'
+import RequestListPane from '$lib/components/navigation/RequestListPane.svelte'
 import FeedbackColumn from './FeedbackColumn.svelte'
 import WorkbenchContainer from './WorkbenchContainer.svelte'
 import WorkspaceHeader from './WorkspaceHeader.svelte'
@@ -21,6 +22,26 @@ const resolveHostProfile = (hostId: string) => ({
 }) as unknown as HostProfile
 
 const agentStatus = createRawSnippet(() => ({ render: () => '<span data-stub-acp>ACP</span>' }))
+
+describe('request column identity', () => {
+  it('hides filtering and the count when collapsed, keeping expansion and request navigation', () => {
+    const props = {
+      requests: previewFixtures.requests,
+      resolveHostProfile,
+      formatTime: () => '10:00',
+      hasMore: true,
+    }
+    const expanded = render(RequestListPane, { props }).body
+    expect(expanded).toContain('aria-label="Filter requests"')
+    expect(expanded).toMatch(/>\s*4\+\s*</)
+
+    const collapsed = render(RequestListPane, { props: { ...props, collapsed: true } }).body
+    expect(collapsed).toContain('aria-label="Expand request list"')
+    expect(collapsed).toContain(`aria-label="${props.requests[0].title}"`)
+    expect(collapsed).not.toContain('aria-label="Filter requests"')
+    expect(collapsed).not.toMatch(/>\s*4\+\s*</)
+  })
+})
 
 describe('workbench column identity', () => {
   it('carries the full request identity, including the title the tab strip used to repeat', () => {
