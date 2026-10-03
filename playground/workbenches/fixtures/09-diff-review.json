@@ -11,5 +11,5 @@
       ]
     }
   },
-  "attachments": [{ "path": "materials/diff-review.md" }]
+  "attachments": [{ "file_name": "diff-review.md", "path": "materials/diff-review.md" }]
 }

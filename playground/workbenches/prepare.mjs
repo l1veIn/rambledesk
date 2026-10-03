@@ -1,5 +1,5 @@
 // Local fixture preparation only. Never contacts RambleDesk or submits feedback.
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,6 +11,28 @@ function insideRoot(base, path) {
   const local = relative(base, path)
   if (!local || local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Path must stay inside the playground')
   return path
+}
+
+function prepareAttachment(base, attachment, field) {
+  const fileName = typeof attachment?.file_name === 'string'
+    ? attachment.file_name.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '') : ''
+  if (!fileName || Buffer.byteLength(fileName, 'utf8') > 255 || /[/\\\0]/.test(fileName) || ['.', '..'].includes(fileName)) {
+    throw new Error(`${field}.file_name: must be a plain file name of 1–255 UTF-8 bytes`)
+  }
+  if (typeof attachment.path !== 'string' || !attachment.path.trim()) {
+    throw new Error(`${field}.path: must name a material inside the playground`)
+  }
+  if (attachment.markdown != null || attachment.contents_base64 != null) {
+    throw new Error(`${field}.path: must be the attachment's only content source`)
+  }
+  let path
+  try {
+    path = insideRoot(base, realpathSync(resolve(base, attachment.path)))
+    if (!statSync(path).isFile()) throw new Error('Path must be a regular file')
+  } catch (error) {
+    throw new Error(`${field}.path: ${error.message}`)
+  }
+  return { ...attachment, file_name: fileName, path }
 }
 
 /** New ordinary workbenches add their own JSON fixture; no central type list. */
@@ -31,10 +53,9 @@ export function loadCases(base = root, development = false) {
     if (['request_id', 'host_id', 'host_session_id', 'actions', 'allow_finish', 'final_summary'].some((key) => key in input)) throw new Error(`${file}: scenario must not contain session identity or completion fields`)
     // Runtime workbenches may prepare their own resources; ordinary types need no branch.
     if (type === 'terminal') input.workbench.data.cwd = realpathSync(base)
-    input.attachments = (input.attachments ?? []).map((attachment) => ({
-      ...attachment,
-      path: insideRoot(base, realpathSync(resolve(base, attachment.path))),
-    }))
+    if (!Array.isArray(input.attachments ?? [])) throw new Error(`${file}: attachments must be an array`)
+    input.attachments = (input.attachments ?? []).map((attachment, index) =>
+      prepareAttachment(base, attachment, `${file}: attachments[${index}]`))
     return { file, type, version, input }
   })
 }

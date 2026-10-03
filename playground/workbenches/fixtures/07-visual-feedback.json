@@ -5,5 +5,5 @@
     "type": "visual_feedback", "version": 1,
     "data": { "title": "画出你希望的布局", "source_version": "playground-visual-blank-v1", "width": 800, "height": 500, "background_color": "#fff8ed", "image_file_name": null }
   },
-  "attachments": [{ "path": "materials/visual-feedback.md" }]
+  "attachments": [{ "file_name": "visual-feedback.md", "path": "materials/visual-feedback.md" }]
 }

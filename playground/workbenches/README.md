@@ -56,7 +56,7 @@ Agent 会为这一轮只准备网页阶段，结束后给出汇总；不会替�
 
 每轮输入、请求 ID、实际响应和报告放在 `.runs/<run-id>/`，不会进入 Git。固定场景在 `fixtures/`，人工操作清单在 `materials/`。所有文案都是测试材料；其中夸大表述和冗余段落是故意留给审阅的。
 
-只校验材料、不发起请求：`node prepare.mjs check`。
+只校验材料、不发起请求：`node prepare.mjs check`。每个附件必须同时声明 `path` 和请求合同必填的 `file_name`；准备时只将路径解析为绝对路径，保留明确的附件名。检查会拒绝缺失或无效的名称，再核对文件存在；新轮输入不合法时不创建运行记录。图片背景的 `image_file_name` 必须精确匹配对应附件的 `file_name`。
 
 准备流程和样例服务的自动检查：`node --test prepare.test.mjs web-review-server.test.mjs`。测试使用隔离运行记录，验证用例发现、恢复约束、服务启停与 URL 恢复，不提交人类反馈。
 

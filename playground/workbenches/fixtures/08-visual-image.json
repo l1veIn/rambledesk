@@ -5,5 +5,5 @@
     "type": "visual_feedback", "version": 1,
     "data": { "title": "给界面草图一些视觉指引", "source_version": "playground-visual-image-v1", "width": 640, "height": 400, "background_color": "#ffffff", "image_file_name": "visual-background.png" }
   },
-  "attachments": [{ "path": "materials/visual-background.png" }, { "path": "materials/visual-feedback.md" }]
+  "attachments": [{ "file_name": "visual-background.png", "path": "materials/visual-background.png" }, { "file_name": "visual-feedback.md", "path": "materials/visual-feedback.md" }]
 }
