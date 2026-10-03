@@ -39,6 +39,10 @@ Workspace and extension development
 - A workbench scaffold adds type-owned contracts, rules, fields, views, and playground materials through two shared registration files. The rating_review acceptance example is restricted to development builds.
 - Optional guide metadata lives in each workbench definition. A shared guide engine reads it directly, preserving existing first-use records and avoiding a separate type list or guide file.
 
+Agent feedback continuation
+- Submitted feedback initializes or resumes its original ACP session without opening the Agent page. Slow initialization in one session does not hold delivery in another; startup failures remain visible and await explicit retry.
+- Explicitly stopping a managed session prevents already-queued feedback from automatically restarting its Agent within the current runtime. A new submission or explicit connection retry can resume delivery. Pending permissions and other interactions still require the user's response.
+
 Acceptance boundaries
 - Playground preparation validates required attachment names before creating a run. Visual, diff, sorting, and development rating fixtures now include file_name; image references retain the exact saved attachment name.
 - The playground covers eight production types in ten scenarios, including blank-canvas drawing and image annotation, followed by a summary request. Preview fixtures and automated checks do not establish microphone, screenshot, physical-phone, or cross-platform PTY compatibility.
@@ -54,6 +58,7 @@ Acceptance boundaries
 - 网页评审、终端试用、视觉反馈和差异评审增加五步首次使用引导及手动重看入口，等待业务视图加载完成后出现，不自动修改草稿、创建标注或批注、启动终端或执行命令。
 - 公共情况说明和材料固定在业务区上方；普通类型通过两份共享注册文件扩展，脚手架默认关闭全屏，rating_review 仅供开发验收。
 - 可选引导在各工作台现有 definition 中声明，共享引导组件直接读取，保留首次使用记录，无需独立类型名单或引导文件。
+- 提交反馈后由后台初始化或恢复原 ACP 会话，无需先打开 Agent 页面；慢连接不阻塞其他会话，启动失败保留原因并等待显式重试。当前运行实例中显式停止托管会话后旧队列不自行重启，新提交或显式连接可恢复投递，权限等交互仍由用户作答。
 - Playground 准备流程在创建轮次前验证附件必填名称；补齐视觉反馈、差异评审、排序及开发评分样例的 file_name，图片引用与附件保存名精确匹配。
 - Playground 用十个场景覆盖八种正式类型，分别体验空白画布和图片批注，再以汇总请求收尾；自动化与预览不能替代真实设备验收。类型化框架与本轮专用工作台扩展属于 0.4.0 之后的源码开发，已发布的 0.4.0 保留既有 Ramble 流程。
 

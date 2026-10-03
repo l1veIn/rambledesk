@@ -1,7 +1,7 @@
 use super::*;
 use std::time::Duration;
 
-async fn request_review(
+pub(super) async fn request_review(
     feedback: &FeedbackApplication,
     session: &ManagedSessionSnapshot,
 ) -> FeedbackRequestView {

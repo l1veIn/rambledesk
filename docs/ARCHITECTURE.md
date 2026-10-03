@@ -177,6 +177,8 @@ Submit(request_id, expected_revision)
 
 每条用户/续接 prompt 前置工作流上下文，但用户 Activity 不保存注入说明。Agent 工具和 bridge 环境传播仍须实测。托管提交/批准与 outbox 入队原子提交，worker 仅在原会话可接收输入时续接；取消不创建新投递。旧取消投递保留历史并停止派发。delivered 不表示任务完成，uncertain 不自动重试，只由人类显式处理。
 
+outbox worker 在投递前通过原 `start_session` 生命周期初始化或恢复离线会话，保留 `remote_session_id`，不依赖前端视图挂载；只读状态查询不启动会话。初始化任务按会话独立执行，并受生命周期锁、中断 epoch、删除意图和 shutdown 管理。忙碌或待答交互继续等待，启动失败只记入对应会话并保留 pending，不轮询反复启动。同一 runtime 的 `stopManagedSession` 记录已入队请求的边界，旧请求不能自动重启；新提交或显式连接可恢复投递。该内存边界不改变应用重启时 pending / sending / uncertain 的持久恢复合同。
+
 Agent 会话标题栏的「内置会话指令」只读展示 `SessionRuntime.builtin_instructions`。该字段在连接成功时从 driver 取得，与 ACP 实际发送的工作流上下文共用同一源文本，不由前端重新拼装。停止连接后保留最近连接的文本并标明其范围；新应用实例和不提供该能力的连接可以省略该字段，不据此推断历史回合使用过哪些规则。查看或复制指令不产生用户 Activity，也不发送 prompt。工作台选型由 Agent 依据本次需要的人类输入决定，具体用途与接入条件见[工作台目录](PROTOCOL.md#工作台发现与类型合同)；混合任务先处理阻塞下一步的输入。
 
 ## 数据布局
