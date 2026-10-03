@@ -106,7 +106,7 @@
   }
 </script>
 
-<div bind:this={root} class="@container overflow-hidden rounded-lg border bg-background">
+<div bind:this={root} class="@container overflow-hidden border bg-background">
   <div data-tour="table-review-toolbar" class="flex flex-wrap items-center gap-2 border-b px-3 py-2">
     <Table2 size={16} class="text-muted-foreground" /><h2 class="min-w-0 flex-1 truncate text-sm font-semibold" title={data.title}>{data.title}</h2>
     <span class="text-xs text-muted-foreground">{data.rows.length} {tr('Rows')} · {data.columns.length} {tr('Columns')}</span>
