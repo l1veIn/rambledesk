@@ -2,71 +2,60 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**2026 年，Vibe Coding 里最昂贵的东西，是人的注意力。**
+**RambleDesk 是一个桌面应用，让你审阅 AI 编程助手的成果，用文字、语音和批注反馈，再继续原来的任务。**
 
-跟通用 Agent 聊天时，我们常常要做三件事：
+Agent 说明做了什么、需要你体验或决定什么。你查看结果，直接留下意见。在 RambleDesk 内开始的会话中，提交反馈后会排队续接原对话。
 
-1. 读完一段又长又散的模型自述。
-2. 自己判断「它到底做完了什么、要我干什么」。
-3. 再把想法写成一段像样的下一轮 prompt。
+[下载安装](https://github.com/l1veIn/rambledesk/releases/latest) · [开始使用](#开始使用) · [文档](docs/README.md)
 
-RambleDesk 把前两步变成一张**体验单**，把第三步改成**先说出来，再可选整理**。
+- **对着材料提意见。** 圈出图片区域、评论改动行、填写单元格建议，不必写一大段话描述位置。
+- **想到什么就说什么。** 支持文字、语音和附件；可选 AI 整理表达，原始反馈会保留。
+- **接着原任务继续。** 草稿保留未完成的反馈；提交时，意见和附件一起交给 Agent。
 
-Agent 必须先写清楚两件事：**刚才发生了什么**，以及**请你体验或确认什么**。你在桌面工作台里说话、截图、直接编辑，不用先写 prompt。提交后，原始反馈、可选整理稿和附件保存为不可变反馈包，交还 Agent 继续工作。把注意力留给体验和判断。
+## 看看怎么用
 
-从 **0.4.0** 起，RambleDesk 支持通过 ACP 连接 Claude Code、Codex CLI、Gemini CLI 等 Coding Agent。沿用你本地已经能正常工作的 Agent，按提示安装必要的连接组件，选择项目就能开始。
+以下为 **0.5.0-rc.1 开发版**的界面截图，使用演示数据。这些新工作台**尚未包含在稳定版 0.4.0 中**。
 
-<div align="center">
+**指出视觉问题：** 圈出需要调整的位置，直接说明改法。
 
-<img src="https://github.com/l1veIn/rambledesk/releases/download/v0.3.2/rambledesk-demo-10s.gif" alt="RambleDesk 产品演示" width="960" />
+![视觉反馈：圈选图片区域并填写意见](docs/screenshots/zh-CN/visual-feedback.webp)
 
-<p><em>早期版本的反馈流程：Agent 请求体验 → 你说话、截图 → 提交反馈。</em></p>
+**审阅代码改动：** 把意见留在对应的改动行旁边。
 
-</div>
+![差异评审：在代码改动行添加意见](docs/screenshots/zh-CN/diff-review.webp)
 
-## 快速开始
+**提出表格建议：** 填写建议值，结合单元格说明原因。
 
-从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 下载 **0.4.0**，支持 Windows x64 和 macOS Apple Silicon。版本变化见[发布说明](docs/CHANGELOG.md)。
+![表格评审：填写单元格建议值和批注](docs/screenshots/zh-CN/table-review.webp)
 
-1. **连接 Agent。** 先确认它在本机能正常使用，再打开「设置 → Agents」，按提示完成连接。登录与模型访问由 Agent 自身提供。
+这些操作记录反馈与修改建议，不会直接改动项目文件。
+
+## 开始使用
+
+从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases) 下载稳定版 **0.4.0**，支持 **Windows x64** 和 **macOS Apple Silicon**。要体验图中的新工作台，请按下方说明运行当前源码。
+
+1. **连接 Agent。** 打开「设置 → Agents」，按提示安装支持的组件，或连接已有的 Claude Code、Codex CLI、Gemini CLI 等 Agent。登录与模型访问由 Agent 自身提供。
 2. **给它一个任务。** 新建会话，选择 Agent 和项目目录，输入目标。
-3. **体验，再反馈。** 收到 Ramble 请求后，按体验单操作，用语音、截图或文字记录感受。提交后，RambleDesk 将反馈续接到原 Agent 会话；送达状态和恢复入口都在工作台里。
+3. **体验并反馈。** 收到请求后，按体验步骤操作并提交意见。应用内会话会将反馈续接到原对话，工作台会显示送达状态。
 
-使用语音前，在「设置 → 语音」下载本地转写模型，并允许麦克风访问。需要模型帮你整理表达时，再到「设置 → 后处理」配置模型服务；整理默认关闭，原始反馈会保留。
+文字反馈无需配置语音。需要说话时，在「设置 → 语音」下载本地转写模型并允许麦克风访问；AI 整理是可选功能，需另行配置模型服务。
 
-<details>
-<summary><strong>首次安装提示</strong></summary>
+Windows 安装包暂未做 Authenticode 签名，macOS 尚未公证，详见[安装指南](docs/INSTALLATION.zh-CN.md)。升级到 0.5.0 前请完整备份：0.4.0 无法打开升级后的数据库，回退方法见[数据兼容说明](docs/DATA_COMPATIBILITY.md)。
 
-**Windows：**运行 `x64-setup.exe`。当前安装包未做 Authenticode 签名；若 SmartScreen 拦截，确认来源是本仓库后，选择「更多信息 → 仍要运行」。
-
-**macOS：**打开 DMG，将 RambleDesk 拖入「应用程序」。当前版本采用 ad-hoc 签名，尚未公证。首次启动可右键选择「打开」；若仍被阻止，前往「系统设置 → 隐私与安全性」，在「安全性」区域点击 RambleDesk 对应的「仍要打开」，再确认「打开」。
-
-若提示应用已损坏，先确认下载来源，再运行：
-
-```bash
-xattr -dr com.apple.quarantine /Applications/RambleDesk.app
-```
-
-</details>
-
-## 沿用自己的 Agent 工作方式
-
-推荐直接在 RambleDesk 中通过 **ACP** 开始对话。模型选项、权限和会话恢复能力取决于所连接的 Agent，配置与恢复方法见 [ACP 使用指南](docs/ACP_MANAGED_SESSIONS.md)。
-
-也可以继续使用原来的 Agent 应用或 CLI，在「设置 → 外部适配器」接入反馈工作台。续接方式因适配器而异；通用 MCP 需要回到 Agent 继续。
+也可沿用原来的 Agent 应用或 CLI，在「设置 → 外部适配器」按[接入指南](docs/COMPATIBILITY.md)配置。续接方式因适配器而异，通用 MCP 需要手动回到 Agent 继续。
 
 ## 从源码运行
 
-准备 Node.js、pnpm、Rust 和对应平台的 Tauri 构建依赖后：
+准备 Git、Node.js、pnpm、Rust 和对应平台的 Tauri 构建依赖后：
 
 ```bash
+git clone https://github.com/l1veIn/rambledesk.git
+cd rambledesk
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-运行与检查方式见[开发指南](docs/DEVELOPMENT.md)，使用、接入与架构说明从[文档索引](docs/README.md)进入。
-
-0.5.0-rc.1 候选源码提供十种正式工作台：自由反馈、逐项问答、文稿审阅、网页评审、终端试用、拖动排序、视觉反馈、差异评审、表格评审和媒体评审，共用草稿、语音与附件输入及提交链路。视觉反馈支持在图片或空白画布上描绘指引；差异评审把批注定位到修改行和改动块。表格评审记录单元格建议与批注，媒体评审把意见绑定到音视频时间点或区间。这些能力属于 0.5.0-rc.1 候选版本；稳定版下载仍为 0.4.0，保留既有 Ramble 自由反馈流程。升级前请备份数据：0.4.0 无法直接打开升级后的数据库，回退方式见[数据兼容说明](docs/DATA_COMPATIBILITY.md)。可从源码运行[工作台 Playground](playground/workbenches/README.md) 完整体验 Agent 流程；实现与兼容边界从[工作台文档](docs/workbench/README.md)进入。
+更多说明：[开发环境](docs/DEVELOPMENT.md) · [Agent 配置与恢复](docs/ACP_MANAGED_SESSIONS.md) · [工作台 Playground](playground/workbenches/README.md) · [文档索引](docs/README.md)
 
 ## 致谢
 
@@ -80,5 +69,5 @@ pnpm dev
 [MIT](LICENSE)。改写代码及其他第三方组件保留各自许可证，详见[第三方声明](THIRD_PARTY_NOTICES.md)。
 
 <p align="center">
-  <img src="docs/social/rambelle-chibi-footer.webp" alt="Q 版 Rambelle 递交反馈档案包" width="800" />
+  <img src="docs/social/rambelle-chibi-footer.webp" alt="Q 版 Rambelle 递交反馈档案包" width="400" />
 </p>

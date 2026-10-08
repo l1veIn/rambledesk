@@ -2,75 +2,64 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-**In 2026, the most expensive part of vibe coding is human attention.**
+**RambleDesk is a desktop app for reviewing your coding agent's work. Give feedback with text, voice, and annotations, then continue the task.**
 
-Working with a general-purpose agent often means doing three things:
+The agent explains what it did and what it needs you to try or decide. You review the result and give feedback where it matters. In sessions started inside RambleDesk, submitting feedback queues the next turn in the original conversation.
 
-1. Read a long, scattered account of what the model did.
-2. Figure out what it actually finished—and what it needs from you.
-3. Turn your thoughts into a well-written prompt for the next round.
+[Download](https://github.com/l1veIn/rambledesk/releases/latest) · [Get started](#get-started) · [Documentation](docs/README.md)
 
-RambleDesk turns the first two steps into a **review request**, and the third into **say it first, tidy it if you want**.
+- **Comment on the material itself.** Point to an image region, a changed line, or a table cell instead of describing its location in a long prompt.
+- **Say what you think.** Write, speak, or attach evidence. Optional AI cleanup helps with wording while preserving your original feedback.
+- **Keep the task moving.** Drafts retain your work, and submitted feedback keeps your comments and attachments together for the agent.
 
-The agent must explain two things: **what just happened** and **what you should try or confirm**. You speak, take screenshots, and edit directly in a desktop workbench, without writing a prompt first. On submission, your original feedback, an optional refined version, and attachments become an immutable feedback package for the agent to continue from. Keep your attention on hands-on review and decisions.
+## See it in use
 
-Starting with **0.4.0**, RambleDesk connects to coding agents such as Claude Code, Codex CLI, and Gemini CLI through ACP. Use an agent that already works on your machine, follow the prompts to install any required connection component, and choose a project to begin.
+Screenshots show the **0.5.0-rc.1 development version**, with demo data. These new workbenches are **not included in stable 0.4.0**.
 
-<div align="center">
+**Point out a visual problem.** Mark an area and explain what should change.
 
-<img src="https://github.com/l1veIn/rambledesk/releases/download/v0.3.2/rambledesk-demo-10s.gif" alt="RambleDesk product demo" width="960" />
+![Visual feedback with a marked image region and a comment](docs/screenshots/en/visual-feedback.webp)
 
-<p><em>The feedback loop in an earlier release: the agent asks for a review → you speak and capture → submit feedback.</em></p>
+**Review a code change.** Put an opinion next to the line it concerns.
 
-</div>
+![Diff review with feedback attached to a changed line](docs/screenshots/en/diff-review.webp)
 
-## Quick start
+**Suggest a table correction.** Record a proposed value and explain it in context.
 
-Download **0.4.0** from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases), available for Windows x64 and macOS Apple Silicon. See the [release notes](docs/CHANGELOG.md) for changes.
+![Table review with a suggested cell value and a comment](docs/screenshots/en/table-review.webp)
 
-1. **Connect an agent.** Make sure it works locally, then open **Settings → Agents** and follow the connection prompts. Sign-in and model access come from the agent itself.
-2. **Give it a task.** Start a new session, choose an agent and project folder, and enter your goal.
-3. **Try it, then respond.** When a Ramble request arrives, follow its review steps and record your feedback with voice, screenshots, or text. Submit it to queue continuation in the original agent session; delivery status and recovery actions stay visible in the workbench.
+These actions record feedback and suggestions; they do not directly edit your project's files.
 
-For voice input, download a local transcription model in **Settings → Voice** and allow microphone access. If you want a model to tidy your wording, configure a model service under **Settings → Post-processing**. This is off by default, and your original feedback is preserved.
+## Get started
 
-<details>
-<summary><strong>First-install notes</strong></summary>
+Download the stable **0.4.0** release for **Windows x64** or **macOS Apple Silicon** from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases). To try the new workbenches pictured above, run the current source below.
 
-**Windows:** Run `x64-setup.exe`. The installer is not yet Authenticode-signed. If SmartScreen blocks it, confirm it came from this repository, then choose **More info → Run anyway**.
+1. **Connect an agent.** Open **Settings → Agents**. Follow the prompts to install supported components or connect an existing agent such as Claude Code, Codex CLI, or Gemini CLI. Sign-in and model access belong to the agent itself.
+2. **Give it a task.** Start a session, choose an agent and project folder, and describe your goal.
+3. **Try it and respond.** When the agent requests feedback, follow its review steps and submit your comments. In an in-app session, feedback returns to the original conversation; delivery status stays visible.
 
-**macOS:** Open the DMG and drag RambleDesk into Applications. The build is ad-hoc signed and not notarized. On first launch, right-click and choose **Open**. If it is still blocked, go to **System Settings → Privacy & Security**, find RambleDesk in the **Security** section, choose **Open Anyway**, and confirm **Open**.
+Text feedback needs no voice setup. For speech, download a local transcription model in **Settings → Voice** and allow microphone access. AI cleanup is optional and needs a separately configured model service.
 
-If macOS reports the app as damaged, confirm the download source first, then run:
+The Windows installer is not Authenticode-signed; macOS builds are not notarized. See the [installation guide](docs/INSTALLATION.md). Before upgrading to 0.5.0, make a complete backup: 0.4.0 cannot open the upgraded database. See [upgrade and rollback guidance](docs/DATA_COMPATIBILITY.md).
 
-```bash
-xattr -dr com.apple.quarantine /Applications/RambleDesk.app
-```
+Prefer your existing agent app or CLI? Use **Settings → External adapters** and follow the [integration guide](docs/COMPATIBILITY.md). Continuation depends on the adapter; Generic MCP requires returning to the agent manually.
 
-</details>
+## Run from source
 
-## Keep your agent workflow
-
-The recommended path is to start conversations directly in RambleDesk through **ACP**. Model options, permissions, and session recovery depend on the connected agent. See the [ACP guide](docs/ACP_MANAGED_SESSIONS.md) for setup and recovery.
-
-You can also stay in your usual agent app or CLI and connect the feedback workbench through **Settings → External adapters**. Continuation varies by adapter; generic MCP requires returning to the agent to continue.
-
-## From source
-
-With Node.js, pnpm, Rust, and your platform's Tauri build dependencies installed:
+Install Git, Node.js, pnpm, Rust, and your platform's Tauri dependencies, then run:
 
 ```bash
+git clone https://github.com/l1veIn/rambledesk.git
+cd rambledesk
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-See the [development guide](docs/DEVELOPMENT.md) for running and checking the project, or the [documentation index](docs/README.md) for product, integration, and architecture guides.
-
-The 0.5.0-rc.1 candidate source includes ten workbench types: free feedback, questions, document review, web review, terminal trials, drag sorting, visual feedback, diff review, table review, and media review. They share drafts, voice and attachment input, and submission. Visual feedback supports images and blank canvases; diff review offers unified and split views with inline comments; table review records cell corrections and comments; media review anchors feedback to points or ranges in saved audio and video. These additions are part of the 0.5.0-rc.1 release candidate; the stable 0.4.0 download retains its existing Ramble feedback workflow. Back up your data before upgrading: 0.4.0 cannot reopen the upgraded database directly. See [upgrade and rollback guidance](docs/DATA_COMPATIBILITY.md). Use the [workbench playground](playground/workbenches/README.md) to try the complete Agent flow from source; implementation and compatibility boundaries start at the [workbench documentation](docs/workbench/README.md).
+See [development setup](docs/DEVELOPMENT.md), [agent setup and recovery](docs/ACP_MANAGED_SESSIONS.md), the [workbench playground](playground/workbenches/README.md), or the [documentation index](docs/README.md).
 
 ## Thanks
 
-- [Codeg](https://github.com/xintaofei/codeg): ACP integration, Agent conversations, settings, and appearance references
+- [Codeg](https://github.com/xintaofei/codeg): ACP integration, agent conversations, settings, and appearance references
 - [Snow Shot](https://github.com/mg-chao/snow-shot): the screenshot stack
 - [RepoChan](https://github.com/l1veIn/repochan-mono): brand and character assets
 - [Kotone](https://github.com/l1veIn/kotone): the local speech stack this workbench grew from
@@ -80,5 +69,5 @@ The 0.5.0-rc.1 candidate source includes ten workbench types: free feedback, que
 [MIT](LICENSE). Adapted code and other third-party components retain their respective licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
 
 <p align="center">
-  <img src="docs/social/rambelle-chibi-footer.webp" alt="Rambelle hands over a feedback folio" width="800" />
+  <img src="docs/social/rambelle-chibi-footer.webp" alt="Rambelle hands over a feedback folio" width="400" />
 </p>

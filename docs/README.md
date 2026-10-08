@@ -6,6 +6,7 @@
 
 | 想做什么 | 入口 |
 | --- | --- |
+| 安装桌面应用、完成首次启动 | [安装指南](INSTALLATION.zh-CN.md) · [English](INSTALLATION.md) |
 | 连接 Coding Agent、开始会话、恢复失败 | [ACP 使用指南](ACP_MANAGED_SESSIONS.md) |
 | 从自己的 Agent 应用接入反馈 | [外部适配器兼容性](COMPATIBILITY.md) |
 | 使用浏览器或手机访问工作台 | [Web Access 支持矩阵](WEB_ACCESS_SUPPORT_MATRIX.md) |
