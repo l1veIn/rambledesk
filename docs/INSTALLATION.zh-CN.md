@@ -4,7 +4,7 @@
 
 从 [GitHub Releases](https://github.com/l1veIn/rambledesk/releases/latest) 下载 Windows x64 安装包或 macOS Apple Silicon 磁盘映像。
 
-升级前先阅读[数据兼容说明](DATA_COMPATIBILITY.md)。尝试候选版前请完整备份数据目录：0.4.0 无法直接打开由 0.5.0 升级后的数据库。
+升级前先阅读[数据兼容说明](DATA_COMPATIBILITY.md)。升级到 0.5.0 前请完整备份数据目录：0.4.0 无法直接打开由 0.5.0 升级后的数据库。
 
 ## Windows
 

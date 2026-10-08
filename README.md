@@ -1,48 +1,92 @@
-# RambleDesk
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/social/readme-header-dark.webp" />
+    <source media="(prefers-color-scheme: light)" srcset="docs/social/readme-header-light.webp" />
+    <img src="docs/social/readme-header-light.webp" alt="RambleDesk" width="640" />
+  </picture>
+</p>
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+<p align="center"><strong>A new interface for working with agents</strong></p>
 
-**RambleDesk is a desktop app for reviewing your coding agent's work. Give feedback with text, voice, and annotations, then continue the task.**
+<p align="center">
+  <a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-The agent explains what it did and what it needs you to try or decide. You review the result and give feedback where it matters. In sessions started inside RambleDesk, submitting feedback queues the next turn in the original conversation.
+**RambleDesk wants to move collaboration beyond the chat box.**
+
+RambleDesk is a desktop workbench for working with coding agents. When you need to try their work, point out a problem, or decide what happens next, it gives you a place to do that.
+
+The agent explains its progress, presents its work, and tells you what to try or decide. You can mark a problem in an image, comment on a code change, or simply say what you think. RambleDesk gathers your feedback and supporting material so the agent can continue the task.
 
 [Download](https://github.com/l1veIn/rambledesk/releases/latest) · [Get started](#get-started) · [Documentation](docs/README.md)
 
-- **Comment on the material itself.** Point to an image region, a changed line, or a table cell instead of describing its location in a long prompt.
-- **Say what you think.** Write, speak, or attach evidence. Optional AI cleanup helps with wording while preserving your original feedback.
-- **Keep the task moving.** Drafts retain your work, and submitted feedback keeps your comments and attachments together for the agent.
+## How does feedback move a task forward?
 
-## See it in use
+Say you ask an agent to adjust a page. After making its changes, it asks you to try the result and confirm how it feels.
 
-Screenshots show the **0.5.0-rc.1 development version**, with demo data. These new workbenches are **not included in stable 0.4.0**.
+1. **See the result and what needs your attention.** The workbench explains what changed and what you should try or decide.
+2. **Leave feedback where it belongs.** Mark a misplaced button, comment on the relevant code change, or say, “The layout looks good. Move the button up a little.”
+3. **Send it back and keep going.** Your comments and attachments go back to the agent. In sessions started inside RambleDesk, submitting feedback queues the next turn in the original conversation, with delivery status visible in the workbench.
 
-**Point out a visual problem.** Mark an area and explain what should change.
+The workbench records your feedback and suggestions; it does not directly edit your project's files.
+
+## Give feedback on the work itself
+
+These screenshots illustrate the **0.5.0 workbenches** with demo data.
+
+### Images: point out what needs changing
+
+Mark an area and explain the adjustment so the agent knows exactly where you mean.
 
 ![Visual feedback with a marked image region and a comment](docs/screenshots/en/visual-feedback.webp)
 
-**Review a code change.** Put an opinion next to the line it concerns.
+### Code: put comments beside the change
+
+Comment on a specific changed line, keeping the location and context with your feedback.
 
 ![Diff review with feedback attached to a changed line](docs/screenshots/en/diff-review.webp)
 
-**Suggest a table correction.** Record a proposed value and explain it in context.
+### Tables: suggest a specific correction
+
+Enter a proposed value for a cell and explain why it should change.
 
 ![Table review with a suggested cell value and a comment](docs/screenshots/en/table-review.webp)
 
-These actions record feedback and suggestions; they do not directly edit your project's files.
+You can also add text, voice, and attachments. Optional AI cleanup helps organize your wording while preserving your original feedback. Unfinished feedback is saved as a draft.
 
 ## Get started
 
-Download the stable **0.4.0** release for **Windows x64** or **macOS Apple Silicon** from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases). To try the new workbenches pictured above, run the current source below.
+Download **0.5.0** for **Windows x64** or **macOS Apple Silicon** from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases).
+
+### Start a task inside RambleDesk
 
 1. **Connect an agent.** Open **Settings → Agents**. Follow the prompts to install supported components or connect an existing agent such as Claude Code, Codex CLI, or Gemini CLI. Sign-in and model access belong to the agent itself.
 2. **Give it a task.** Start a session, choose an agent and project folder, and describe your goal.
-3. **Try it and respond.** When the agent requests feedback, follow its review steps and submit your comments. In an in-app session, feedback returns to the original conversation; delivery status stays visible.
+3. **Try it and respond.** When a feedback request arrives, review the result, follow its steps, and submit your comments. Feedback returns to the original conversation so the task can continue.
 
-Text feedback needs no voice setup. For speech, download a local transcription model in **Settings → Voice** and allow microphone access. AI cleanup is optional and needs a separately configured model service.
+### Connect your existing agent app or CLI
 
-The Windows installer is not Authenticode-signed; macOS builds are not notarized. See the [installation guide](docs/INSTALLATION.md). Before upgrading to 0.5.0, make a complete backup: 0.4.0 cannot open the upgraded database. See [upgrade and rollback guidance](docs/DATA_COMPATIBILITY.md).
+Open **Settings → External adapters** and follow the [integration guide](docs/COMPATIBILITY.md). How the task continues after delivery depends on the adapter; Generic MCP requires returning to the agent manually.
 
-Prefer your existing agent app or CLI? Use **Settings → External adapters** and follow the [integration guide](docs/COMPATIBILITY.md). Continuation depends on the adapter; Generic MCP requires returning to the agent manually.
+### Voice and AI cleanup
+
+Text feedback needs no extra setup. For speech, download a local transcription model in **Settings → Voice** and allow microphone access. AI cleanup is optional and needs a separately configured model service.
+
+### Installation and upgrades
+
+The Windows installer is not Authenticode-signed; macOS builds are not notarized. See the [installation guide](docs/INSTALLATION.md).
+
+Before upgrading from 0.4.0, make a complete backup: **0.4.0 cannot open the upgraded database**. See [upgrade and rollback guidance](docs/DATA_COMPATIBILITY.md).
+
+## Why this design?
+
+From ChatGPT to today's coding agents, interfaces have moved into IDEs, terminals, and browsers. We still tend to put our requests, questions, and feedback into a chat box.
+
+As agents take on more work independently, the moments that need human involvement change: trying the result, adding context the agent lacks, or choosing between possible directions.
+
+RambleDesk organizes interaction around those moments. It brings the current work, the questions that need your judgment, and your feedback together, giving each review a clear focus and a path back to the original task.
+
+It suits a workflow where the agent works independently and you step in at meaningful points to try the result and give feedback.
 
 ## Run from source
 

@@ -4,7 +4,7 @@ Captured on 2026-10-08 from `main` commit `dd5a2b161ddf31369b789b7964c9f450c8331
 
 These images show the real App UI in the development browser preview. The application locale is set to English or Simplified Chinese, and a disposable preview harness supplies localized, in-memory demo requests and example content. Feedback is entered through the actual controls. No production source changes are required for these captures, and no text, controls, or status indicators are replaced in the captured images.
 
-The screenshots do not show the published 0.4.0 package, a connected live Agent, or real customer data. The examples remain drafts and are not submitted to an Agent. This preview does not verify native microphone or screen-capture permissions, backend persistence, or feedback delivery.
+The screenshots use demo data. The examples remain drafts and are not submitted to a live Agent. This preview does not verify native microphone or screen-capture permissions, backend persistence, or feedback delivery.
 
 | Image | Locale | Scenario and view |
 | --- | --- | --- |

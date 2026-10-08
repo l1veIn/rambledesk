@@ -1,5 +1,16 @@
 # 品牌图片来源
 
+## readme-header-dark.webp / readme-header-light.webp
+
+0.5.0 中英文 README 共用的头图，根据 GitHub 的明暗主题选择对应版本。来源为用户于 2026-10-08 提供的 `RambleDesk-README-0.5.0-draft.zip`，内容为 Rambelle 头像与 RambleDesk 字标。
+
+| 消费文件 | 尺寸 | 大小 |
+|---|---|---|
+| [readme-header-dark.webp](readme-header-dark.webp) | 1600 × 360 | 45,104 bytes |
+| [readme-header-light.webp](readme-header-light.webp) | 1600 × 360 | 44,758 bytes |
+
+由包内同名 PNG 转为无损 WebP（method 6、exact），未缩放或改画。解码后的全部 RGBA 像素与原图一致，保留透明背景；两张合计比原 PNG 减少约 40%。原始压缩包及预览 HTML 不作为仓库发布资产。
+
 ## rambelle-chibi-footer.webp
 
 中英文 README 共用的结尾横幅：Q 版 Rambelle 在小型反馈工作台递出透明档案包，以轻盈的品牌画面收束阅读。图中的两行文字为 `RambleDesk` 和 `Rambling is all you need.`，不承载产品界面或状态承诺。

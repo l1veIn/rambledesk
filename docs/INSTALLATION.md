@@ -4,7 +4,7 @@
 
 Download the Windows x64 installer or macOS Apple Silicon disk image from [GitHub Releases](https://github.com/l1veIn/rambledesk/releases/latest).
 
-If you are upgrading, read the [data compatibility guide](DATA_COMPATIBILITY.md) first. Back up the complete data directory before trying a release candidate: 0.4.0 cannot open a database upgraded by 0.5.0 directly.
+If you are upgrading, read the [data compatibility guide](DATA_COMPATIBILITY.md) first. Back up the complete data directory before upgrading to 0.5.0: 0.4.0 cannot open a database upgraded by 0.5.0 directly.
 
 ## Windows
 
