@@ -20,37 +20,60 @@ The agent explains its progress, presents its work, and tells you what to try or
 
 [Download](https://github.com/l1veIn/rambledesk/releases/latest) · [Get started](#get-started) · [Documentation](docs/README.md)
 
-## How does feedback move a task forward?
+## What do people do when working with coding agents?
 
-Say you ask an agent to adjust a page. After making its changes, it asks you to try the result and confirm how it feels.
+Agents can write code, research a topic, and run tools on their own. But moving a task forward still often needs your involvement:
 
-1. **See the result and what needs your attention.** The workbench explains what changed and what you should try or decide.
-2. **Leave feedback where it belongs.** Mark a misplaced button, comment on the relevant code change, or say, “The layout looks good. Move the button up a little.”
-3. **Send it back and keep going.** Your comments and attachments go back to the agent. In sessions started inside RambleDesk, submitting feedback queues the next turn in the original conversation, with delivery status visible in the workbench.
+- **Add context they don't have.** Explain the business background, clarify a requirement, or answer a question.
+- **Choose a direction.** Compare approaches, express a preference, or set priorities.
+- **Review what they wrote.** Read a plan, a draft, or code, and suggest changes in the relevant places.
+- **Try it yourself.** Open a page, use an interface, or run a CLI, and note what works and where you get stuck.
+- **Check the result.** Verify table values, details in an image, or a passage in audio or video.
 
-The workbench records your feedback and suggestions; it does not directly edit your project's files.
+If you've used `askUserQuestion`, you already know one kind of workbench interaction: the agent presents a question and options, asks you to answer, and continues based on your response. RambleDesk's **questions workbench** follows that familiar pattern and extends it to other tasks. Reviewing a document brings up the text and annotation controls; trying a page brings up the page and a place for feedback.
 
-## Give feedback on the work itself
+**A workbench prepares the material and controls for a task that needs your input, then collects your response for the agent.** You don't have to turn every judgment into a chat message. Answers, annotations, and attachments return to the agent with your feedback. In sessions started inside RambleDesk, submitting feedback queues the next turn in the original conversation.
 
-These screenshots illustrate the **0.5.0 workbenches** with demo data.
+### Which workbenches are available?
 
-### Images: point out what needs changing
+0.5.0 includes ten workbenches:
 
-Mark an area and explain the adjustment so the agent knows exactly where you mean.
+| Workbench | What you can do |
+| --- | --- |
+| Questions | Answer questions one by one, choose options, and add explanations, much like `askUserQuestion` |
+| Free feedback | Follow review steps and record feedback with text, voice, and attachments |
+| Document review | Annotate paragraphs or selected text and suggest rewrites |
+| Image annotation and canvas | Draw arrows, boxes, and text on an image or blank canvas to show where and what to change |
+| Web review | View a page and leave comments on specific elements |
+| Terminal trials | Use a real CLI, quote its output, and record your experience |
+| Drag sorting | Reorder options to express priorities or preferences |
+| Diff review | Review code changes and comment on lines, ranges, or hunks |
+| Table review | Suggest cell values and add comments |
+| Audio and video review | Play the material and leave feedback on a timestamp or segment |
+
+Annotations and proposed rewrites are saved as feedback and suggestions. Actions in a web page or terminal have their usual effects. See the [workbench playground](playground/workbenches/README.md) for more examples.
+
+## Workbench examples
+
+These examples show three **0.5.0** workbenches with demo data.
+
+### Document review: suggest changes beside the original text
+
+Read a plan or draft written by the agent and comment on the relevant paragraph, explaining what should change and why.
+
+![Document review: reading an onboarding plan and adding paragraph comments](docs/screenshots/en/document-review.webp)
+
+### Image annotation: point out what needs changing
+
+Mark an area and explain the adjustment so the agent knows what you're referring to.
 
 ![Visual feedback with a marked image region and a comment](docs/screenshots/en/visual-feedback.webp)
 
-### Code: put comments beside the change
+### Free feedback: try it, then leave your thoughts
 
-Comment on a specific changed line, keeping the location and context with your feedback.
+Follow the agent's steps to try the result. Write or speak your observations, and attach supporting material when needed.
 
-![Diff review with feedback attached to a changed line](docs/screenshots/en/diff-review.webp)
-
-### Tables: suggest a specific correction
-
-Enter a proposed value for a cell and explain why it should change.
-
-![Table review with a suggested cell value and a comment](docs/screenshots/en/table-review.webp)
+![Free feedback: trying an onboarding flow and recording observations](docs/screenshots/en/free-feedback.webp)
 
 You can also add text, voice, and attachments. Optional AI cleanup helps organize your wording while preserving your original feedback. Unfinished feedback is saved as a draft.
 
@@ -87,6 +110,44 @@ As agents take on more work independently, the moments that need human involveme
 RambleDesk organizes interaction around those moments. It brings the current work, the questions that need your judgment, and your feedback together, giving each review a clear focus and a path back to the original task.
 
 It suits a workflow where the agent works independently and you step in at meaningful points to try the result and give feedback.
+
+## Where RambleDesk fits
+
+**How many extra tokens does an agent need to provide richer interaction?** The horizontal axis shows UI richness; the vertical axis shows the extra token usage introduced to provide the interface.
+
+```mermaid
+---
+config:
+  quadrantChart:
+    chartWidth: 800
+    chartHeight: 480
+    pointLabelFontSize: 16
+    xAxisLabelFontSize: 16
+    yAxisLabelFontSize: 16
+  themeVariables:
+    quadrant1Fill: transparent
+    quadrant2Fill: transparent
+    quadrant3Fill: transparent
+    quadrant4Fill: transparent
+---
+quadrantChart
+    title UI richness × extra token usage
+    x-axis "Text chat" --> "Direct interaction"
+    y-axis "Fewer extra tokens" --> "More extra tokens"
+    "Classic chat": [0.12, 0.08]
+    "askUserQuestion": [0.35, 0.22]
+    "RambleDesk (design target)": [0.75, 0.20] radius: 7, color: #0ea5e9
+    "Dynamic components (e.g. A2UI)": [0.68, 0.58]
+    "Generated HTML / JS": [0.76, 0.84]
+```
+
+RambleDesk aims for the lower right: **reuse built-in workbenches so the agent supplies materials and parameters, and people can review, annotate, and try the result directly.** The model does not need to write an interface for each feedback request. Interaction is shaped by the available workbenches; dynamically generated interfaces can compose components or layouts as needed.
+
+Classic chat provides the zero baseline for UI generation overhead. Tool definitions, parameters, and UI descriptions can still consume tokens. **Positions illustrate design intent, not measured results**, and vary by implementation and task; total token usage for the full task needs separate measurement.
+
+[A2UI](https://a2ui.org/introduction/what-is-a2ui/) describes dynamic components and data. [AG-UI](https://docs.ag-ui.com/introduction) connects events and state without requiring HTML generation. [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) can host prebuilt interfaces. The latter two are described outside the chart because their costs depend on the implementation.
+
+See [interaction approaches and related research](docs/INTERACTION_LANDSCAPE.md) for measurement definitions, more implementations (including CopilotKit, assistant-ui, and Chainlit), and five related papers.
 
 ## Run from source
 

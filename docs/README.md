@@ -20,6 +20,7 @@
 | --- | --- |
 | 本地运行、检查和修改流程 | [开发指南](DEVELOPMENT.md) |
 | 产品使命、主要旅程与范围 | [产品说明](PRODUCT.md)与[产品原则](CONSTITUTION.md) |
+| RambleDesk 与其他交互方案的关系、相关论文 | [交互方案与相关研究](INTERACTION_LANDSCAPE.zh-CN.md) · [English](INTERACTION_LANDSCAPE.md) |
 | 唯一术语及身份边界 | [术语表](TERMINOLOGY.md) |
 | 模块所有权、持久化与客户端生命周期 | [架构](ARCHITECTURE.md) |
 | 当前工作台、共享输入与新增类型的实现入口 | [工作台开发索引](workbench/README.md)；十种正式类型、旧合同兼容与开发演练范围 |
