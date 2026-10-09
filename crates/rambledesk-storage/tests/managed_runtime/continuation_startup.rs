@@ -84,6 +84,16 @@ async fn stopped_feedback_submission_resumes_without_an_agent_view_and_connected
     assert_eq!(driver.start_attempts.load(Ordering::SeqCst), 2);
     let second = submit_review(&store, &session).await;
     eventually(|| delivered(&store, &session.session.session_id, &second)).await;
+    // Delivery is recorded before the prompt task runs. Wait for this turn to
+    // finish before checking how many times the reused connection was called.
+    eventually(|| async {
+        app.get_feedback_status(target(&session))
+            .await
+            .unwrap()
+            .activity
+            == SessionActivityState::Idle
+    })
+    .await;
     assert_eq!(driver.start_attempts.load(Ordering::SeqCst), 2);
     assert_eq!(
         driver.connections.lock().unwrap()[1]
