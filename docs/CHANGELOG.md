@@ -16,6 +16,63 @@
 
 ---
 
+## v0.5.0
+
+What's new in RambleDesk 0.5.0
+
+Human feedback workbenches
+RambleDesk now offers ten workbench types: questions, free feedback, document review, web review, terminal trials, drag sorting, visual feedback, diff review, table review, and media review. New single-choice requests use a single question; existing single_choice requests retain their original contracts and results.
+
+Review documents with paragraph comments and suggested wording; annotate images or a blank canvas; attach comments to diff lines, ranges, and hunks; suggest table values; or leave timestamp and range comments on saved audio and video. Source documents, diffs, and table values remain unchanged by review suggestions. Media retains the 20 MiB attachment limit and requires explicit playback.
+
+Web review opens real pages and records element comments; cross-origin pages must load the review bridge and permit embedding. Terminal trials run a real PTY on the backend machine, support output quotes, and stop and drain before submission. These trial actions have their normal effects. Drag sorting records final order, labels, and deleted items.
+
+Feedback text, answers, and comments share voice, paste, screenshot, attachment, and speech-tidying input where supported. Input stays with its original request and field, and drafts save text and structured state together. Expanded views retain the same request and draft; first-use guides explain controls without modifying feedback or starting trials.
+
+Reliability and Agent continuation
+Fix cancellation immediately after sending, including prompts not yet dispatched to the Agent, and prevent late cancellation from affecting the next turn. Permission cards retain exact tool identities and available command or file details; permissions still require the user's response.
+
+Submitted feedback initializes or resumes its original ACP session in the background. Slow initialization does not block other sessions; startup failures remain visible for explicit retry. Stopping a managed session prevents its existing feedback queue from restarting the Agent within the current runtime; a new submission or explicit connection retry can resume delivery.
+
+Fix table edits losing unsaved text on double-click, unsuccessful tools appearing as file changes, Windows UNC terminal directory handling, missing playground attachment names and path-alias validation, and the website demo getting stuck during submission. Strengthen regression checks for concurrent sends, continuation recovery, and workbench loading.
+
+Workspace, development, and documentation
+The native window fits the available monitor work area. Request context and materials stay above scrolling workbench content, navigation columns share aligned headers, and terminal views share four saved color presets. Table review uses a straight-edged workspace layout.
+
+The workbench scaffold adds type-owned contracts, views, and playground materials; the playground covers ten types in thirteen scenarios. The bilingual README now explains human participation, the ten workbenches, and setup with localized WebP screenshots. Separate installation guides and interaction-design references document setup, related implementations, and research; the positioning map is a design illustration, not a token benchmark.
+
+Upgrade and compatibility
+Before upgrading from 0.4.0, close all instances and back up the database directory, attachment library, and application configuration together. Database extensions advance from 20 to 22 while retaining existing data. Version 0.4.0 refuses the upgraded database; reinstalling it is not a rollback. Restore the complete pre-upgrade backup to return to 0.4.0, and separately preserve any feedback created after upgrading. Do not delete migration records. Guidance: https://github.com/l1veIn/rambledesk/blob/v0.5.0/docs/DATA_COMPATIBILITY.md
+
+Request summaries in what_happened are limited to 200 Unicode scalar values. Longer values return INVALID_ARGUMENT without truncation; put detailed materials in workbench data or attachments. Supported workbench contracts depend on the adapter. Generic MCP still requires returning to the Agent manually to continue.
+
+Windows x64 packages include NSIS and MSI; NSIS provides the Tauri updater artifact and signature. Windows installers are not Authenticode-signed. Apple Silicon macOS provides an ad-hoc signed DMG without notarization or automatic updates. Installation: https://github.com/l1veIn/rambledesk/blob/v0.5.0/docs/INSTALLATION.md
+
+Preview fixtures and automated checks do not establish native microphone or screen-capture permissions, physical-phone support, codec support on every platform, or native PTY compatibility on every OS. Platform and device acceptance must be assessed separately from the release build.
+
+中文摘要
+0.5.0 将反馈扩展为十种工作台：问答、自由反馈、文稿审阅、网页评审、终端试用、拖动排序、视觉反馈、差异评审、表格评审和媒体评审。新单选使用单题问答，旧 single_choice 请求保留原合同与结果。
+
+文稿、图片、代码差异、表格和音视频都有对应的批注方式；原稿、固定 diff 和表格原值保持不变，修改意见作为建议交回 Agent。网页与终端提供真实体验操作；跨源网页需接入 bridge 并允许嵌入，终端运行在后端主机，提交前停止并收尾输出。音视频材料上限 20 MiB，不自动播放。
+
+正文、答案和批注共用受支持的语音、粘贴、截图、附件与整理能力，输入固定到原请求和字段，正文与结构化状态共同保存。全屏页签共用草稿，首次使用引导不自动修改内容或启动试用。
+
+修复发送后立即取消的竞态，迟到的取消不再影响下一轮；权限卡片补齐工具身份和可用详情，不自动授权。反馈在后台初始化或恢复原 ACP 会话，慢连接不阻塞其他会话，失败等待显式重试；当前运行实例中主动停止会话后，旧队列不会自行重启 Agent。
+
+修复表格双击丢失未保存文本、失败工具被计入文件改动、Windows UNC 终端目录、脚手架附件名称与路径别名校验、官网演示提交状态卡住等问题，并加强并发发送、续接恢复及工作台加载回归。窗口适配显示器工作区，情况说明和材料固定在业务区上方，终端提供四种配色，表格工作区改用直角布局。
+
+Playground 用十三个场景覆盖十种工作台。中英文 README 重新说明人参与任务的方式，配合对应语言的 WebP 界面截图、十种工作台清单、独立安装指南和交互研究资料；定位图表达设计意图，不是 Token 实测排名。
+
+从 0.4.0 升级前退出所有实例，完整备份数据库目录、附件资料库和应用配置。数据库扩展从 20 升到 22；0.4.0 无法打开升级后的资料库，回退须恢复升级前完整备份，并另存升级后新增反馈，不删除迁移记录。详见上述数据兼容说明。
+
+what_happened 摘要最多 200 个 Unicode 标量值，超限返回 INVALID_ARGUMENT，不自动截断；详细材料放入工作台 data 或附件。各适配器支持的工作台合同不同，通用 MCP 仍需手动回到 Agent 继续。
+
+Windows x64 提供 NSIS 和 MSI，NSIS 提供 Tauri 更新产物与签名，尚无 Authenticode；Apple Silicon macOS 提供 ad-hoc 签名 DMG，尚未公证、不支持应用内更新。安装说明：https://github.com/l1veIn/rambledesk/blob/v0.5.0/docs/INSTALLATION.zh-CN.md
+
+自动化与预览不能替代真实设备验收，尤其是麦克风与截图权限、实体手机、各平台媒体编解码及原生 PTY；构建通过不代表这些体验全部通过。
+
+Full changelog: https://github.com/l1veIn/rambledesk/compare/v0.4.0...v0.5.0
+
 ## v0.5.0-rc.1
 
 RambleDesk 0.5.0-rc.1 — release candidate

@@ -4699,7 +4699,7 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rambledesk-acp"
-version = "0.5.0-rc.1"
+version = "0.5.0"
 dependencies = [
  "agent-client-protocol",
  "async-trait",
@@ -4723,7 +4723,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-cli"
-version = "0.5.0-rc.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4742,7 +4742,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-core"
-version = "0.5.0-rc.1"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -4768,7 +4768,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-desktop"
-version = "0.5.0-rc.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4825,7 +4825,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-feedback-client"
-version = "0.5.0-rc.1"
+version = "0.5.0"
 dependencies = [
  "axum",
  "clap",
@@ -4840,7 +4840,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-hosts"
-version = "0.5.0-rc.1"
+version = "0.5.0"
 dependencies = [
  "rambledesk-core",
  "serde",
@@ -4851,7 +4851,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-local-server"
-version = "0.5.0-rc.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4886,7 +4886,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-mcp"
-version = "0.5.0-rc.1"
+version = "0.5.0"
 dependencies = [
  "base64 0.22.1",
  "hex",
@@ -4905,7 +4905,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-speech"
-version = "0.5.0-rc.1"
+version = "0.5.0"
 dependencies = [
  "bzip2 0.6.1",
  "cpal",
@@ -4922,7 +4922,7 @@ dependencies = [
 
 [[package]]
 name = "rambledesk-storage"
-version = "0.5.0-rc.1"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
