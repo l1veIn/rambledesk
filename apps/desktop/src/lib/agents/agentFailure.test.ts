@@ -38,4 +38,24 @@ describe('action-specific agent failures', () => {
     expect(body).not.toContain('data-agent-setup-guide')
     expect(body).not.toContain('Authenticate')
   })
+
+  it('offers conditional setup for an unknown DeepSeek prompt failure without claiming an authentication diagnosis', () => {
+    // deepseek-acp@0.8.0 returns -32603 without structured data when no key is
+    // configured. The backend safely projects that wire error to this failure.
+    const failure = agentFailureFrom({ failure: { stage: 'prompt', reason: 'unknown',
+      message: 'The Agent could not complete this message; inspect the session before retrying (ACP error -32603)' } }, 'prompt')
+    expect(failure.reason).toBe('unknown')
+    const body = render(AgentFailureNotice, { props: {
+      failure, catalogId: 'deepseek-acp', hostId: 'dsh', onConfigure: vi.fn(),
+      config: { id: 'deepseek', catalog_id: 'deepseek-acp', name: 'DeepSeek', host_id: 'dsh', protocol: 'acp', enabled: true,
+        command: '/managed/node', args: ['/managed/node_modules/deepseek-acp/dist/index.js'], env: {}, created_at: '', updated_at: '' },
+    } }).body
+    expect(body).toContain('data-agent-failure="unknown"')
+    expect(body).toContain('The agent could not complete this message')
+    expect(body).toContain('If you have not configured authentication or an API key')
+    expect(body).toContain('/managed/node /managed/node_modules/deepseek-acp/dist/index.js --setup')
+    expect(body).toContain('Configure an API key in advanced settings')
+    expect(body).not.toContain('requires authentication')
+    expect(body).not.toContain('dsh web')
+  })
 })

@@ -396,8 +396,16 @@
                   <p class="m-0 mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
                     {tr('Adds feedback requests to your external DSH profiles and installs the Ramble guide. DSH can wait for your reply in its own session.')}
                   </p>
+                  {#if dshStatus?.installed && dshStatus.profiles.length === 0}
+                    <p class="m-0 mt-2 max-w-2xl text-xs leading-5 text-muted-foreground" role="status">
+                      {tr('DSH is installed, but no profiles have been initialized. Run dsh web once, then detect again to install the adapter.')}
+                    </p>
+                  {/if}
                 </div>
-                <Button disabled={installingDsh || dshStatusLoading || dshStatus?.profiles.length === 0 || capabilities.hostIntegrationAdministration.status.availability === 'unavailable'} onclick={installDshPackage}>
+                <Button variant="ghost" size="icon-sm" disabled={installingDsh || dshStatusLoading || capabilities.hostIntegrationAdministration.status.availability === 'unavailable'} aria-label={tr('Detect DSH again')} title={tr('Detect DSH again')} onclick={() => void refreshDshStatus()}>
+                  <RefreshCw class={dshStatusLoading ? 'animate-spin' : ''} />
+                </Button>
+                <Button disabled={installingDsh || dshStatusLoading || !dshStatus || dshStatus.profiles.length === 0 || capabilities.hostIntegrationAdministration.status.availability === 'unavailable'} onclick={installDshPackage}>
                   {#if installingDsh}
                     <LoaderCircle class="animate-spin" data-icon="inline-start" />
                     {tr('Installing…')}

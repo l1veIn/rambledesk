@@ -8,7 +8,7 @@
   import type { AgentConfig, AgentInspection, SaveAgentConfigInput } from '$lib/generated/feedback'
   import type { AgentDiagnosis } from './agentDiagnosis'
   import { locale } from '$lib/preferences'
-  import { agentConnectionResult, agentDiagnosis, agentListItems, agentStatus, connectionPreparationAvailable, createAgentCatalogController, installIsActive, manualAgentConfiguration, type AgentStatus } from './agentCatalogController'
+  import { agentConnectionResult, agentDiagnosis, agentListItems, agentStatus, connectionPreparationAvailable, createAgentCatalogController, installIsActive, manualAgentConfiguration, sortedAgentListItems, type AgentStatus } from './agentCatalogController'
   import AgentSettings from './AgentSettings.svelte'
   import AgentSetupGuide from './AgentSetupGuide.svelte'
   import AgentIcon from './AgentIcon.svelte'
@@ -37,7 +37,8 @@
   let resetting = false
   let lastReady: string | null | undefined = undefined
   let manualPaths: Record<string, string> = {}
-  $: items = agentListItems($catalog.entries, $catalog.configs, $catalog.connections)
+  $: items = sortedAgentListItems($catalog)
+  $: if (!$catalog.loading && selected !== 'new' && items.length && !items.some(row => row.key === selected)) selected = items[0].key
   $: item = selected === 'new' ? undefined : items.find(row => row.key === selected) ?? items[0]
   $: entry = item?.entry
   $: profile = item?.configs.find(config => config.id === selectedProfile) ?? item?.config
@@ -54,6 +55,7 @@
     } else if (lastReady !== null) { lastReady = null; onReady?.(null) }
   }
   $: checking = status === 'checking'
+  $: detectionBusy = $catalog.detecting || $catalog.checking.length > 0 || $catalog.connecting.length > 0
   $: job = entry ? $catalog.jobs.filter(job => job.agent_id === entry.id).at(-1) : undefined
   $: installing = job ? installIsActive(job) : false
   $: canPrepare = connectionPreparationAvailable(entry, inspection)
@@ -188,21 +190,23 @@
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div><h3 class="m-0 text-sm font-semibold">{tr('智能体', 'Agents')}</h3><p class="m-0 mt-1 text-xs leading-5 text-muted-foreground">{tr('选择支持的智能体，检测或准备与 RambleDesk 的连接。', 'Choose a supported agent, then detect or prepare its connection to RambleDesk.')}</p></div>
     <div class="flex flex-wrap items-center gap-2">
-      <Button variant="outline" size="sm" disabled={$catalog.loading || $catalog.checking.length > 0 || $catalog.connecting.length > 0 || saving || resetting} onclick={() => void catalog.detectAll()}><RefreshCw class={`size-3.5 ${$catalog.checking.length > 0 || $catalog.connecting.length > 0 || resetting ? 'animate-spin' : ''}`} />{tr('检测智能体', 'Detect agents')}</Button>
-      <Button variant="destructive" size="sm" data-agent-reset-configs disabled={$catalog.loading || $catalog.checking.length > 0 || $catalog.connecting.length > 0 || saving || resetting} onclick={() => (confirmingReset = true)}>
+      <Button variant="outline" size="sm" aria-busy={detectionBusy} disabled={$catalog.loading || detectionBusy || saving || resetting} onclick={() => void catalog.detectAll()}>{#if detectionBusy}<LoaderCircle class="size-3.5 animate-spin" />{:else}<RefreshCw class="size-3.5" />{/if}{detectionBusy ? tr('检测中…', 'Detecting…') : tr('检测智能体', 'Detect agents')}</Button>
+      <Button variant="destructive" size="sm" data-agent-reset-configs disabled={$catalog.loading || detectionBusy || saving || resetting} onclick={() => (confirmingReset = true)}>
         {#if resetting}<LoaderCircle class="size-3.5 animate-spin" />{:else}<RotateCcw class="size-3.5" />{/if}{tr('清除所有配置并重新检测', 'Clear all configurations and detect again')}
       </Button>
     </div>
   </div>
+  {#if $catalog.detecting}<p role="status" class="m-0 flex items-center gap-2 text-xs text-muted-foreground"><LoaderCircle class="size-3.5 animate-spin" />{tr('正在检测智能体及 ACP 连接，请稍候…', 'Detecting agents and checking ACP connections…')}</p>{/if}
   {#if safeError}<p role="alert" class="break-words rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs">{safeError}</p>{/if}
   <div class="grid min-w-0 gap-3 @min-[680px]:grid-cols-[210px_minmax(0,1fr)]">
-    <nav class="overflow-hidden rounded-xl border bg-card" aria-label={tr('智能体列表', 'Agent list')}>
+    <nav class="overflow-hidden rounded-xl border bg-card" aria-label={tr('智能体列表', 'Agent list')} aria-busy={detectionBusy}>
       <div class="border-b px-3 py-3 text-[11px] font-medium text-muted-foreground">{tr('可连接的智能体', 'Available agents')} · {items.filter(row => !row.legacy).length}</div>
       <div class="max-h-[560px] space-y-1 overflow-y-auto p-2">
         {#each items.filter(row => !row.legacy) as row (row.key)}
+          {@const rowStatus = agentStatus(row, $catalog)}
           <button type="button" disabled={saving} class={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-3 text-left transition-colors disabled:opacity-50 ${item?.key === row.key ? 'border-primary/30 bg-primary/5' : 'border-transparent hover:bg-muted/60'}`} aria-current={item?.key === row.key ? 'page' : undefined} onclick={() => selectRow(row.key)}>
             <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background"><AgentIcon hostId={row.config?.host_id ?? row.entry?.host_id} class="size-4" /></span>
-            <span class="min-w-0 flex-1"><strong class="block truncate text-xs font-medium">{row.name}</strong><span class={`mt-1 block text-[10px] ${agentStatus(row, $catalog) === 'connected' ? 'text-emerald-600' : 'text-muted-foreground'}`}>{statusText(agentStatus(row, $catalog))}</span></span>
+            <span class="min-w-0 flex-1"><strong class="block truncate text-xs font-medium">{row.name}</strong><span class={`mt-1 flex items-center gap-1 text-[10px] ${rowStatus === 'connected' ? 'text-emerald-600' : 'text-muted-foreground'}`}>{#if rowStatus === 'checking'}<LoaderCircle class="size-3 animate-spin" />{:else if rowStatus === 'connected'}<CheckCircle2 class="size-3" />{/if}{statusText(rowStatus)}</span></span>
             {#if item?.key === row.key}<ChevronRight class="size-3 shrink-0 text-muted-foreground" />{/if}
           </button>
         {/each}
@@ -233,6 +237,7 @@
             <div class="flex items-center justify-between gap-3 text-xs"><span class="font-medium">{tr('ACP 连接', 'ACP connection')}</span><span class="flex items-center gap-1.5" class:text-emerald-600={diagnosis?.connection === 'connected'} class:text-muted-foreground={diagnosis?.connection !== 'connected'}>{#if installing || diagnosis?.connection === 'checking'}<LoaderCircle class="size-3.5 animate-spin" />{:else if diagnosis?.connection === 'connected'}<CheckCircle2 class="size-3.5" />{/if}{installing ? tr('正在连接', 'Connecting') : connectionText(diagnosis?.connection ?? 'unchecked')}</span></div>
             <p class="m-0 text-xs leading-5 text-muted-foreground">{connectionExplanation(diagnosis, installing, nativeFound, item.name, inspection, $locale)}</p>
             {#if diagnosis?.reason === 'authentication'}<AgentSetupGuide catalogId={entry?.id} hostId={profile?.host_id ?? entry?.host_id} name={item.name} config={profile} {inspection} purpose="authentication" onConfigure={() => advancedOpen = true} compact />{/if}
+            {#if diagnosis?.connection === 'connected' && entry?.id === 'deepseek-acp'}<details class="text-xs"><summary class="cursor-pointer underline underline-offset-4">{tr('首次使用 DeepSeek 的设置', 'First-time DeepSeek setup')}</summary><div class="mt-2"><AgentSetupGuide catalogId={entry.id} hostId={profile?.host_id ?? entry.host_id} name={item.name} config={profile} {inspection} purpose="first-use" onConfigure={() => advancedOpen = true} compact /></div></details>{/if}
           </div>
           <div class="flex flex-wrap gap-2">
             {#if showConnect}<Button size="sm" disabled={saving || installing || checking} onclick={() => entry && void catalog.connect(entry.id, profile?.id)}><Download class="size-3.5" />{tr('一键连接', 'Connect in one click')}</Button>{/if}

@@ -1,14 +1,54 @@
 //! Explicit network gate, excluded from ordinary tests. Installs catalog-pinned
 //! packages into a new app-owned temporary prefix, never globally. It only sends
-//! ACP initialize: no session, authentication flow, prompt or model request.
-//! Run: cargo test -p rambledesk-acp --test catalog_network -- --ignored --nocapture
+//! ACP initialize and a DSH session: no authentication flow, prompt or model request.
+//! Run: python scripts/onboarding-isolated-smoke.py (Windows clean process environment)
+//! Or: cargo test -p rambledesk-acp --test catalog_network real_catalog_install_inspect_and_initialize -- --ignored --nocapture
 use rambledesk_acp::{
     agents::AgentCatalogService,
     probe::{AcpConnection, AcpLaunch},
 };
-use rambledesk_core::{AgentInstallSource, InstallAgentInput};
+use rambledesk_core::{AgentCheckStatus, AgentInstallSource, InstallAgentInput};
 use std::{collections::BTreeMap, sync::Arc};
 use tokio_util::sync::CancellationToken;
+
+#[tokio::test]
+#[ignore = "requires the allowlisted environment from scripts/onboarding-isolated-smoke.py"]
+async fn isolated_missing_runtime_reports_setup_requirements() {
+    assert_eq!(
+        std::env::var("RAMBLEDESK_ISOLATED_CATALOG_SMOKE").as_deref(),
+        Ok("1")
+    );
+    assert!(rambledesk_core::find_executable("node").is_none());
+    assert!(rambledesk_core::find_executable("npm").is_none());
+    let root = tempfile::tempdir().unwrap();
+    let service = AgentCatalogService::new(root.path().join("agents")).unwrap();
+    let inspection = service
+        .inspect_with_cancel("deepseek-acp", &CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(inspection.source, AgentInstallSource::Missing);
+    assert!(inspection.command.is_none());
+    assert!(
+        inspection
+            .checks
+            .iter()
+            .any(|check| check.id == "npm" && check.status == AgentCheckStatus::Fail)
+    );
+    let result = service
+        .install_with_cancel(
+            InstallAgentInput {
+                agent_id: "deepseek-acp".into(),
+                version: None,
+            },
+            CancellationToken::new(),
+            Arc::new(|_| {}),
+        )
+        .await;
+    assert!(matches!(
+        result,
+        Err(rambledesk_acp::agents::CatalogError::CommandUnavailable)
+    ));
+}
 
 #[tokio::test]
 #[ignore = "downloads real npm packages into an isolated temporary prefix"]
@@ -39,6 +79,29 @@ async fn real_catalog_install_inspect_and_initialize() -> Result<(), Box<dyn std
     let service = AgentCatalogService::new(root.join("agents"))?;
     let mut report = vec![];
     for id in ["deepseek-acp", "codex-acp"] {
+        if std::env::var("RAMBLEDESK_ISOLATED_CATALOG_SMOKE").as_deref() == Ok("1") {
+            let before = service
+                .inspect_with_cancel(id, &CancellationToken::new())
+                .await?;
+            assert_eq!(
+                before.source,
+                AgentInstallSource::Missing,
+                "must not discover a preinstalled Agent"
+            );
+            assert!(before.command.is_none());
+            assert!(
+                before
+                    .checks
+                    .iter()
+                    .any(|check| check.id == "node" && check.status == AgentCheckStatus::Pass)
+            );
+            assert!(
+                before
+                    .checks
+                    .iter()
+                    .any(|check| check.id == "npm" && check.status == AgentCheckStatus::Pass)
+            );
+        }
         let agent_name = id.to_owned();
         let installed = service
             .install_with_cancel(
@@ -80,6 +143,9 @@ async fn real_catalog_install_inspect_and_initialize() -> Result<(), Box<dyn std
             ("XDG_CONFIG_HOME", home.join("config")),
             ("XDG_DATA_HOME", home.join("data")),
             ("XDG_CACHE_HOME", home.join("cache")),
+            ("DSH_HOME", home.join("dsh")),
+            ("DSH_AGENTS_HOME", home.join("dsh-agents")),
+            ("DEEPSEEK_ACP_SESSIONS_ROOT", home.join("dsh-sessions")),
         ] {
             tokio::fs::create_dir_all(&path).await?;
             env.insert(name.into(), path.to_string_lossy().into_owned());
@@ -99,6 +165,17 @@ async fn real_catalog_install_inspect_and_initialize() -> Result<(), Box<dyn std
         };
         let connection = AcpConnection::connect(&launch, Arc::new(|_| {})).await?;
         let capabilities = connection.capabilities();
+        let session_opened = if id == "deepseek-acp" {
+            let session = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                connection.open_session(&launch, None),
+            )
+            .await??;
+            assert!(!session.remote_session_id.is_empty());
+            true
+        } else {
+            false
+        };
         let shutdown = connection.shutdown().await;
         shutdown?;
         if id == "deepseek-acp" {
@@ -108,7 +185,9 @@ async fn real_catalog_install_inspect_and_initialize() -> Result<(), Box<dyn std
         let item = serde_json::json!({
             "agent_id": id, "version": installed.version,
             "source": "managed", "entry_filename": entry.file_name().and_then(|name| name.to_str()),
+            "entry_path": entry, "node_path": launch.command,
             "initialize": true, "capabilities": capabilities,
+            "session_opened": session_opened, "authentication_verified": false,
             "shutdown": true, "model_requests": 0,
         });
         println!("{}", serde_json::to_string(&item)?);

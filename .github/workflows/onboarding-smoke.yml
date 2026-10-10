@@ -1,0 +1,79 @@
+name: First-run and external adapter smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.1
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.0
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - name: Build fixture frontend
+        id: web
+        run: pnpm build:web
+      - name: Exercise first-run UI and adapter regressions
+        run: |
+          pnpm -C apps/desktop exec vitest run src/lib/onboarding src/lib/agents src/lib/settings/AdaptersSettings.test.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:pi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm test:dsh
+          exit $LASTEXITCODE
+      # Continue independent probes after a failure so their evidence is retained.
+      - name: Install and inspect with fresh homes and only Node/npm
+        id: catalog
+        continue-on-error: true
+        run: python scripts/onboarding-isolated-smoke.py --output "$env:RUNNER_TEMP/first-run-smoke/catalog"
+      - name: Rehearse DSH first turn without credentials and with a local model stub
+        id: dsh
+        continue-on-error: true
+        run: node scripts/dsh-first-turn-smoke.mjs --catalog-report "$env:RUNNER_TEMP/first-run-smoke/catalog/catalog.json" --output "$env:RUNNER_TEMP/first-run-smoke/dsh"
+      - name: Exercise shipped external adapters against real HTTP and SQLite
+        id: adapters
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $fixture = python scripts/feedback-acceptance.py start --keep | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not start the disposable feedback fixture' }
+          try {
+            $catalog = Get-Content "$env:RUNNER_TEMP/first-run-smoke/catalog/catalog.json" -Raw | ConvertFrom-Json
+            $entry = ($catalog | Where-Object agent_id -eq 'deepseek-acp').entry_path
+            if (-not $entry) { throw 'No isolated DSH installation was produced' }
+            $modules = [IO.Path]::GetFullPath((Join-Path (Split-Path $entry -Parent) '../..'))
+            node scripts/external-adapter-acceptance.mjs $fixture.manifestFile "$env:RUNNER_TEMP/first-run-smoke/external-adapters.json" $modules
+            if ($LASTEXITCODE -ne 0) { throw 'External adapter acceptance failed' }
+          } finally {
+            python scripts/feedback-acceptance.py stop $fixture.manifestFile
+            if ($LASTEXITCODE -ne 0) { throw 'Disposable feedback fixture did not stop cleanly' }
+          }
+      - name: Enforce probe results
+        if: ${{ !cancelled() && (steps.catalog.outcome != 'success' || steps.dsh.outcome != 'success' || steps.adapters.outcome != 'success') }}
+        run: throw 'A first-run or external adapter probe failed; inspect the evidence artifact'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: first-run-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/first-run-smoke/catalog/*.json
+            ${{ runner.temp }}/first-run-smoke/catalog/*.log
+            ${{ runner.temp }}/first-run-smoke/dsh/**/report.json
+            ${{ runner.temp }}/first-run-smoke/external-adapters.json
+          if-no-files-found: warn

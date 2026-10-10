@@ -13,6 +13,8 @@ RambleDesk 通过 ACP 管理本机外部智能体的会话；智能体负责推�
 5. 第一条真实任务被接受并持久化后，草稿沿用同一 ACP session 和 tab 转为正式会话，进入侧栏。没有反馈请求的正式会话仍正常显示。
 6. Agent 发起 Ramble 请求后，在 Ramble 页面体验并提交。RambleDesk 等待当前轮次结束，再续接原 Agent 会话；“查看 Agent”打开或聚焦其唯一 Agent tab。
 
+DeepSeek（DSH）的 ACP 入口是 `deepseek-acp`，仅安装系统 `dsh` 不代表连接组件已就绪。一键连接会准备应用自有组件；首次使用时展开卡片中的设置说明，运行当前实际入口的 `--setup`，或在高级设置中配置 `DEEPSEEK_API_KEY`。该组件无凭据也可能通过握手与建会话，到首条消息才失败；连接成功不能替代认证。配置更改在实例下次启动时生效，按界面提示重连后再重试原消息。
+
 关闭全部 tab 后显示 Rambelle 空白页与新建会话入口，关闭 tab 不等于删除会话或停止 Agent。
 
 桌面与 Web 调用同一个 application 服务。切换客户端不会另建 Agent 会话；Web Access 的启停不拥有 Agent 生命周期。

@@ -16,6 +16,8 @@
 
 在「设置 → 外部适配器」检测并安装对应入口。Generic MCP 自动配置写入宿主的 MCP 配置，并安装共享 `ramble` skill；dsh 原生安装也提供该 skill，插件在重启 dsh 后生效。实际目标路径与冲突以安装界面的检查结果为准，不把宿主目录布局当作长期协议。
 
+DSH CLI 刚安装、尚未生成 profile 时，先运行一次 `dsh web` 完成初始化，再回到外部适配器页面重新检测并安装。已有 CLI 与已有可安装的 profile 是不同状态；无需为初始化重复安装 CLI。
+
 - **Generic MCP**：适用于 Claude Code、Codex CLI、OpenCode、Reasonix、Grok 等支持相应 HTTP MCP 配置的宿主。`list_workbenches` / `describe_workbench` 提供类型发现，`request_feedback`、`get_feedback`、`cancel_feedback` 管理请求；终态读取返回反馈包 metadata、Markdown 和附件路径，类型结果位于 `feedback_package.manifest.workbench.result`。安装入口存在、工具可列出、真实反馈闭环通过是三种不同结论。
 - **Pi**：使用 [`packages/pi-rambledesk`](../packages/pi-rambledesk/README.md)。原生工具在调用内等待，支持按 request ID 读取、恢复和取消。
 - **dsh**：使用 [`packages/dsh-rambledesk`](../packages/dsh-rambledesk/README.md)。`request_ramble_feedback` 创建并等待，`resume_ramble_feedback` 恢复等待，另有读取和取消工具；共享 `/ramble` 用于当前任务，`/ramble_on`、`/ramble_off` 控制插件的持续模式。

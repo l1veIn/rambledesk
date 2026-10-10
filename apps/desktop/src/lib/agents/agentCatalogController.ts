@@ -13,7 +13,7 @@ type ConnectionResult = { signature: string; result: AgentConnectionCheck }
 export type AgentCatalogState = {
   entries: AgentCatalogEntry[]; configs: AgentConfig[]; jobs: AgentInstallJob[]
   inspections: Record<string, AgentInspection>; connections: Record<string, ConnectionResult>
-  checking: string[]; connecting: string[]; loading: boolean; error: string
+  checking: string[]; connecting: string[]; loading: boolean; detecting: boolean; error: string
 }
 export function installIsActive(job: AgentInstallJob) { return ['preparing', 'installing', 'verifying'].includes(job.phase) }
 export function catalogConfiguration(entry: AgentCatalogEntry, inspection: AgentInspection) {
@@ -51,6 +51,12 @@ export function agentStatus(row: AgentListItem, state: AgentCatalogState): Agent
   if (diagnosis.connection === 'failed') return 'attention'
   if (diagnosis.connection === 'connected' && diagnosis.reason !== 'none') return 'attention'
   return diagnosis.connection
+}
+export function sortedAgentListItems(state: AgentCatalogState): AgentListItem[] {
+  const priority: Record<AgentStatus, number> = { connected: 0, checking: 1, attention: 2, prepare: 3, unchecked: 4, missing: 5 }
+  return agentListItems(state.entries, state.configs, state.connections)
+    .sort((left, right) => Number(Boolean(left.legacy)) - Number(Boolean(right.legacy))
+      || priority[agentStatus(left, state)] - priority[agentStatus(right, state)])
 }
 export function manualAgentConfiguration(entry: AgentCatalogEntry, path: string, previous?: AgentConfig): SaveAgentConfigInput {
   const command = path.trim().replace(/^"(.*)"$/u, '$1')
@@ -156,7 +162,7 @@ function prepareConnection(transport: ApplicationTransport, entry: AgentCatalogE
 }
 
 export function createAgentCatalogController(transport: ApplicationTransport) {
-  const state = writable<AgentCatalogState>({ entries: [], configs: [], jobs: [], ...readAgentDetectionCache(transport), checking: [], connecting: [], loading: true, error: '' })
+  const state = writable<AgentCatalogState>({ entries: [], configs: [], jobs: [], ...readAgentDetectionCache(transport), checking: [], connecting: [], loading: true, detecting: false, error: '' })
   let active = false
   let timer: ReturnType<typeof setTimeout> | undefined
   let unsubscribe: (() => void) | undefined
@@ -429,6 +435,7 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
   function detectAll(reason: 'manual' | 'onboarding' = 'manual'): Promise<void> {
     if (!active) return Promise.resolve()
     if (detecting) return detecting
+    patch({ detecting: true })
     const finish = startClientDiagnostic('agent_detection', { action: 'scan', source: 'catalog', reason, rescan: true })
     detecting = (async () => {
       await refresh(reason)
@@ -443,7 +450,7 @@ export function createAgentCatalogController(transport: ApplicationTransport) {
       const snapshot = get(state)
       const failedCount = inspectionFailures + Object.values(snapshot.connections).filter(check => !check.result.ok).length
       finish(!active ? 'cancelled' : refreshFailed || failedCount ? 'failed' : 'ok', { entry_count: snapshot.entries.length, checked_count: Object.keys(snapshot.connections).length, failed_count: failedCount })
-    })().catch(error => { finish('failed', { error_category: diagnosticErrorCategory(error) }); throw error }).finally(() => { detecting = undefined })
+    })().catch(error => { finish('failed', { error_category: diagnosticErrorCategory(error) }); throw error }).finally(() => { detecting = undefined; patch({ detecting: false }) })
     return detecting
   }
   async function install(agentId: string) {

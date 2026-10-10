@@ -120,14 +120,14 @@
           <ChefHat data-icon="inline-start" />
         {/if}
         {cooking
-          ? tr('Organizing additional notes…')
+          ? tr('Cooking…')
           : submitStage === 'saving'
             ? tr('Saving…')
             : submitting
               ? tr('Publishing…')
               : cookedDraftReady
                 ? tr('Submit feedback')
-                : tr('Organize additional notes')}
+                : tr('Cook')}
       </Button>
       {#if !cookedDraftReady}
         <Button size="sm" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
@@ -136,9 +136,9 @@
             ? tr('Saving…')
             : cooking || submitting
               ? cooking || submitStage === 'cooking'
-                ? tr('Organizing additional notes…')
+                ? tr('Cooking…')
                 : tr('Publishing…')
-              : tr('Organize notes and submit')}
+              : tr('Cook and submit')}
         </Button>
       {/if}
     {:else}

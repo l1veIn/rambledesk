@@ -13,8 +13,9 @@ use rambledesk_core::{
     SaveDraftInput, WorkbenchTerminalOperations,
 };
 use rambledesk_local_server::{
-    AccessToken, DurableWebAccessToken, SpaAsset, SpaAssetCachePolicy, SpaAssetSource,
-    WebAccessServerConfig, WebSessionManager, start_web_access_server,
+    AccessToken, DurableWebAccessToken, ServerConfig, SpaAsset, SpaAssetCachePolicy,
+    SpaAssetSource, WebAccessServerConfig, WebSessionManager, start_server,
+    start_web_access_server,
 };
 use rambledesk_storage::SqliteFeedbackStore;
 use serde_json::{Value, json};
@@ -214,6 +215,16 @@ async fn main() -> anyhow::Result<()> {
         .into_application()
         .with_change_observer(changes.clone());
     let requests = seed(&application).await?;
+    // Exercise the shipped Pi/dsh adapters and Generic MCP against the same
+    // disposable application as the human-facing Web Access API.
+    let local_token = AccessToken::generate();
+    let local_token_file = directory.path().join("local-server.token");
+    write_secret(&local_token_file, local_token.secret())?;
+    let local_server = start_server(
+        ServerConfig::new(local_token).with_port(0),
+        application.clone(),
+    )
+    .await?;
     let commands = Arc::new(ApplicationCommandFacade::new(
         application.clone(),
         WorkbenchTerminalOperations::without_observer(application),
@@ -251,6 +262,8 @@ async fn main() -> anyhow::Result<()> {
         "url": server.origin(), "directory": directory.path(), "database": database,
         "tokenFile": token_file, "stopFile": stop_file, "manifestFile": manifest_file,
         "pid": std::process::id(), "keep": keep, "dist": dist, "requests": requests,
+        "localApiUrl": format!("http://{}/api", local_server.address()),
+        "localMcpUrl": local_server.endpoint(), "localTokenFile": local_token_file,
         "distIndexSha256": hex::encode(Sha256::digest(std::fs::read(dist.join("index.html"))?)),
     });
     std::fs::write(&manifest_file, serde_json::to_vec_pretty(&manifest)?)?;
@@ -265,9 +278,11 @@ async fn main() -> anyhow::Result<()> {
         } => {}
     }
     server.shutdown().await?;
+    local_server.shutdown().await?;
     store.close().await;
     // Retained data is useful evidence, but the live credential is no longer needed.
     std::fs::remove_file(token_file)?;
+    std::fs::remove_file(local_token_file)?;
     if keep {
         // The launcher appends source/build provenance after readiness.
         let mut manifest: Value = serde_json::from_slice(&std::fs::read(&manifest_file)?)?;

@@ -39,6 +39,17 @@ pub fn catalog() -> Vec<AgentCatalogEntry> {
             true,
             []
         ),
+        npm!(
+            "deepseek-acp",
+            "DeepSeek (DSH)",
+            "dsh",
+            "deepseek-acp",
+            "0.8.0",
+            "deepseek-acp",
+            "22.0.0",
+            true,
+            []
+        ),
         // Project trust remains an explicit Agent permission; do not copy Codeg's --skip-trust.
         npm!(
             "gemini",
@@ -116,17 +127,6 @@ pub fn catalog() -> Vec<AgentCatalogEntry> {
             "20.0.0",
             false,
             ["--no-auto-update", "agent", "stdio"]
-        ),
-        npm!(
-            "deepseek-acp",
-            "DeepSeek (DSH)",
-            "dsh",
-            "deepseek-acp",
-            "0.8.0",
-            "deepseek-acp",
-            "22.0.0",
-            true,
-            []
         ),
         npm!(
             "qoder",

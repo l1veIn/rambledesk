@@ -127,6 +127,14 @@ pub fn resolve_dsh_binary() -> Option<PathBuf> {
     find_executable("dsh")
 }
 
+fn missing_profiles_message(dsh_detected: bool) -> &'static str {
+    if dsh_detected {
+        "DSH is installed, but no initialized profiles were found. Run `dsh web` once to initialize a profile, then detect again and install the adapter."
+    } else {
+        "No dsh profiles found. Install dsh, run `dsh web` once to initialize a profile, then detect again and install the adapter."
+    }
+}
+
 /// Locate the dsh plugin package directory.
 ///
 /// Candidates mirror `pi_install::resolve_package_dir`:
@@ -359,9 +367,7 @@ pub(super) async fn install_dsh_package(
         .map_err(|error| format!("Could not resolve the user home directory: {error}"))?;
     let profiles = list_dsh_profiles(&home);
     if profiles.is_empty() {
-        return Err(
-            "No dsh profiles found. Install dsh first, then run this installer again.".to_owned(),
-        );
+        return Err(missing_profiles_message(resolve_dsh_binary().is_some()).to_owned());
     }
     let targets: Vec<_> = match profile_id.as_deref() {
         Some(id) => profiles

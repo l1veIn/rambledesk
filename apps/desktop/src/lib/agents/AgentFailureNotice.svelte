@@ -18,6 +18,10 @@
   export let retryLabel = 'Retry preparing this session'
   export let busy = false
   $: envText = Object.entries(config?.env ?? {}).map(([key, value]) => key + '=' + value).join('\n')
+  // deepseek-acp reports missing credentials as an unclassified prompt error.
+  // Offer setup as a possible next step without relabeling the failure.
+  $: deepseekFirstUse = failure.stage === 'prompt' && failure.reason === 'unknown'
+    && (catalogId ?? config?.catalog_id ?? inspection?.agent_id) === 'deepseek-acp'
   function tr(text: string) { return agentText($locale, text) }
 </script>
 
@@ -27,6 +31,8 @@
   {#if failure.reason !== 'authentication'}<p class="m-0 text-muted-foreground">{tr(agentFailureAdvice(failure))}</p>{/if}
   {#if failure.reason === 'authentication'}
     <AgentSetupGuide {catalogId} {hostId} {name} {config} {inspection} {onConfigure} purpose="authentication" compact />
+  {:else if deepseekFirstUse}
+    <AgentSetupGuide {catalogId} {hostId} {name} {config} {inspection} {onConfigure} purpose="first-use" compact />
   {:else if onConfigure && (failure.stage === 'launch' || failure.stage === 'initialize' || failure.reason === 'configuration' || failure.reason === 'model')}
     <button type="button" class="text-left underline underline-offset-4" onclick={onConfigure}>{tr('Open this agent’s settings')}</button>
   {/if}

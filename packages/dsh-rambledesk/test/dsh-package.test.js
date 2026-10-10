@@ -592,6 +592,12 @@ test("cancel posts an explicit cancellation", async () => {
       body: { request_id: "019", reason: "Obsolete." },
     });
     assert.match(result.text, /cancelled/);
+    for (const reason of [undefined, "", "   "]) {
+      await cancelTool.execute({ request_id: "019", reason }, {});
+      assert.deepEqual(calls.at(-1).body, {
+        request_id: "019", reason: "Cancelled from dsh.",
+      });
+    }
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

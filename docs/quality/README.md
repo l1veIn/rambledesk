@@ -32,6 +32,7 @@
 
 ## 按任务复验
 
+- [0.5.0 首次使用与外部适配器审计](ONBOARDING_0_5_0_AUDIT.md)：2026-10-10 的空环境组件安装、DSH 无凭据与本地 stub 首轮、真实 HTTP/SQLite 外部适配器闭环及修复；正式安装包与真实模型的未验边界单列。
 - [0.5.0-rc.1 源码与 Windows 原生验收](RELEASE_0_5_0_RC1_ACCEPTANCE.md)：2026-10-03 固定提交 `456dfeb` 的 51 提交审查、三平台 CI、真实 Agent 两轮、表格/音频恢复与发布、官方 0.4.0 数据升级及备份回退；正式候选产物按独立判据记录。
 - [视觉反馈与差异评审](WORKBENCH_VISUAL_DIFF_ACCEPTANCE.md)：2026-10-02 的 Windows 源码检查、固定材料浏览器观察和容量边界。
 - [隔离反馈夹具](FEEDBACK_ACCEPTANCE.md)：真实 HTTP、SQLite、CAS、发布包与浏览器下载。

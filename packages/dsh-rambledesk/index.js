@@ -610,7 +610,10 @@ Do not call this tool repeatedly for the same request unless you reuse the same 
     output: toolOutput(),
     async execute(args, exec) {
       const signal = exec?.signal;
-      const result = await postFeedback("cancel", { request_id: args.request_id, ...(args.reason ? { reason: args.reason } : {}) }, signal, options);
+      const result = await postFeedback("cancel", {
+        request_id: args.request_id,
+        reason: firstNonEmpty(args.reason) ?? "Cancelled from dsh.",
+      }, signal, options);
       if (isTerminal(result)) {
         clearPendingByRequestId(result.request_id);
       }

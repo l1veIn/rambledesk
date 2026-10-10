@@ -8,7 +8,7 @@
 `ApplicationCommandFacade`、`WebSessionManager` 和 Web Access server。
 它沿用 [Web Access server 测试](../../crates/rambledesk-local-server/tests/web_access_server.rs)
 与 [managed preview](../../crates/rambledesk-local-server/examples/managed_preview.rs) 的装配方式。
-这个更小的入口只创建外部反馈请求，不启动 ACP、Local Integration listener、Tauri、模型或客户端设备采集。可选终端场景在用户主动开始后使用后端真实 PTY。
+这个更小的入口只创建外部反馈请求，不启动 ACP、Tauri、模型或客户端设备采集；另起随机 loopback Local Integration listener，供真实 Pi/dsh JSON API 与 Generic MCP 验收。可选终端场景在用户主动开始后使用后端真实 PTY。
 
 每次运行创建全新的系统临时目录和 SQLite，反馈包与附件也只写在该目录内；端口由 IPv4 loopback
 listener 随机分配。无选项可以接入日常数据库。凭证随机生成，只写临时文件，不输出到日志。
@@ -32,6 +32,7 @@ python3 scripts/feedback-acceptance.py start --keep
 `--no-build` 可复用已构建的 example，manifest 会明确记录该限制。
 
 默认启动输出包含 `url`、`manifestFile`、`database`、`tokenFile`、`stopFile`、PID 和四条 seed 的 id。
+还包含 `localApiUrl`、`localMcpUrl` 与独立的 `localTokenFile`；两套凭据都只在本次临时目录中保存，停止时移除。`node scripts/external-adapter-acceptance.mjs <manifestFile> <report.json> [dsh-node-modules]` 使用这些入口复验外部适配器；第三个位置参数指定已隔离安装的 DSH 依赖目录时，通过实际 Cordis loader 和 ToolRuntime 执行 DSH 工具。
 打开 URL，将 `tokenFile` 中的测试凭证填入现有 Web Access 认证界面。不要把凭证放进截图或验收记录。
 每条 seed 使用独立外部 Host Session；要选择对应的 Session，才能看到它的请求。
 

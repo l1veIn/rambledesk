@@ -29,11 +29,32 @@ function markup(options: { check?: AgentConnectionCheck; inspection?: AgentInspe
   fixture.state = { entries: [entry], configs: options.profiles ?? (options.check ? [profile] : []), jobs: [],
     inspections: { [entry.id]: options.inspection ?? missing },
     connections: options.check ? { [profile.id]: { signature: launchSignature(profile), result: options.check } } : {},
-    checking: [], connecting: [], loading: false, error: '', ...options.state }
+    checking: [], connecting: [], loading: false, detecting: false, error: '', ...options.state }
   return render(AgentCatalog, { props: { transport: {} as never } }).body
 }
 
 describe('Agent detection cards', () => {
+  it('shows the full scan as busy even between individual probes', () => {
+    const body = markup({ state: { detecting: true } })
+    expect(body).toContain('Detecting…')
+    expect(body).toContain('Detecting agents and checking ACP connections…')
+    const detectButton = body.match(/<button\b[^>]*>/u)?.[0]
+    expect(detectButton).toContain('aria-busy="true"')
+    expect(detectButton).toContain(' disabled=')
+    expect(body).toMatch(/<nav\b[^>]*aria-busy="true"/u)
+  })
+
+  it('renders connected agents before unchecked agents in the navigation', () => {
+    const secondEntry = { ...entry, id: 'codex-acp', name: 'Codex CLI', host_id: 'codex' }
+    const secondProfile = { ...profile, id: 'codex', catalog_id: secondEntry.id, host_id: secondEntry.host_id }
+    const body = markup({ profiles: [secondProfile], state: {
+      entries: [entry, secondEntry],
+      connections: { [secondProfile.id]: { signature: launchSignature(secondProfile), result: { ok: true, message: 'ACP connected', details: [] } } },
+    } })
+    const navigation = body.slice(body.indexOf('<nav'), body.indexOf('</nav>'))
+    expect(navigation.indexOf('Codex CLI')).toBeLessThan(navigation.indexOf('Claude Code'))
+  })
+
   it('shows the checked duplicate under the canonical agent and keeps old profile names in advanced settings', () => {
     const unchecked = { ...profile, name: 'Claude Code' }
     const duplicate = { ...profile, id: 'claude-2', name: 'Claude Code (2)' }
@@ -85,5 +106,19 @@ describe('Agent detection cards', () => {
       expect(body).not.toContain('data-agent-setup-guide')
       expect(body).not.toContain('Run in a terminal:')
     }
+  })
+
+  it('offers first-use DeepSeek setup after ACP connects without declaring authentication verified', () => {
+    const deepseekEntry = { ...entry, id: 'deepseek-acp', host_id: 'dsh', name: 'DeepSeek' }
+    const deepseekProfile = { ...profile, catalog_id: deepseekEntry.id, host_id: 'dsh', command: '/managed/node',
+      args: ['/managed/node_modules/deepseek-acp/dist/index.js'] }
+    const body = markup({ profiles: [deepseekProfile], state: {
+      entries: [deepseekEntry], inspections: {},
+      connections: { [deepseekProfile.id]: { signature: launchSignature(deepseekProfile), result: { ok: true, message: 'ACP connected', details: [] } } },
+    } })
+    expect(body).toContain('First-time DeepSeek setup')
+    expect(body).toContain('Passing the ACP connection check does not verify model access')
+    expect(body).toContain('/managed/node /managed/node_modules/deepseek-acp/dist/index.js --setup')
+    expect(body).not.toContain('requires authentication')
   })
 })
