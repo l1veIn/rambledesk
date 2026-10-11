@@ -16,7 +16,7 @@
 
 RambleDesk is a desktop workbench for working with coding agents. When you need to try their work, point out a problem, or decide what happens next, it gives you a place to do that.
 
-The agent explains its progress, presents its work, and tells you what to try or decide. You can mark a problem in an image, comment on a code change, or simply say what you think. RambleDesk gathers your feedback and supporting material so the agent can continue the task.
+Leave suggestions beside a document, mark a problem in an image, or write or speak your thoughts. RambleDesk sends your feedback together with the content it refers to, so the agent can use it to continue the task.
 
 [Download](https://github.com/l1veIn/rambledesk/releases/latest) · [Get started](#get-started) · [Documentation](docs/README.md)
 
@@ -36,17 +36,18 @@ If you've used `askUserQuestion`, you already know one kind of workbench interac
 
 ### Which workbenches are available?
 
-0.5.0 includes ten workbenches:
+RambleDesk provides eleven workbenches in the current source:
 
 | Workbench | What you can do |
 | --- | --- |
 | Questions | Answer questions one by one, choose options, and add explanations, much like `askUserQuestion` |
 | Free feedback | Follow review steps and record feedback with text, voice, and attachments |
-| Document review | Annotate paragraphs or selected text and suggest rewrites |
+| Document review | Review Markdown and annotate selected text, cross-paragraph ranges, or the whole document |
 | Image annotation and canvas | Draw arrows, boxes, and text on an image or blank canvas to show where and what to change |
 | Web review | View a page and leave comments on specific elements |
 | Terminal trials | Use a real CLI, quote its output, and record your experience |
 | Drag sorting | Reorder options to express priorities or preferences |
+| Brainstorming | Develop idea cards, group and select directions, and carry your edits into the next round |
 | Diff review | Review code changes and comment on lines, ranges, or hunks |
 | Table review | Suggest cell values and add comments |
 | Audio and video review | Play the material and leave feedback on a timestamp or segment |
@@ -55,25 +56,31 @@ Annotations and proposed rewrites are saved as feedback and suggestions. Actions
 
 ## Workbench examples
 
-These examples show three **0.5.0** workbenches with demo data.
+See a few ways to work with an agent.
 
 ### Document review: suggest changes beside the original text
 
-Read a plan or draft written by the agent and comment on the relevant paragraph, explaining what should change and why.
+Select a passage, add a comment or suggested rewrite beside it, then keep reading.
 
-![Document review: reading an onboarding plan and adding paragraph comments](docs/screenshots/en/document-review.webp)
+![Document review: selecting text and writing a comment beside the original](docs/screenshots/en/document-review.gif)
 
 ### Image annotation: point out what needs changing
 
 Mark an area and explain the adjustment so the agent knows what you're referring to.
 
-![Visual feedback with a marked image region and a comment](docs/screenshots/en/visual-feedback.webp)
+![Image annotation: marking a region and explaining what should change](docs/screenshots/en/visual-feedback.gif)
+
+### Brainstorming: shape ideas and choose what comes next
+
+Edit and group idea cards, select directions, then ask the agent to expand, combine, or continue with your choices. Your edits carry into the next round.
+
+![Brainstorming: editing idea cards, grouping them, and selecting directions](docs/screenshots/en/brainstorm.gif)
 
 ### Free feedback: try it, then leave your thoughts
 
 Follow the agent's steps to try the result. Write or speak your observations, and attach supporting material when needed.
 
-![Free feedback: trying an onboarding flow and recording observations](docs/screenshots/en/free-feedback.webp)
+![Free feedback: following review steps and recording observations](docs/screenshots/en/free-feedback.gif)
 
 You can also add text, voice, and attachments. Optional AI cleanup helps organize your wording while preserving your original feedback. Unfinished feedback is saved as a draft.
 
@@ -111,16 +118,14 @@ RambleDesk organizes interaction around those moments. It brings the current wor
 
 It suits a workflow where the agent works independently and you step in at meaningful points to try the result and give feedback.
 
-## Where RambleDesk fits
-
-**How many extra tokens does an agent need to provide richer interaction?** The horizontal axis shows UI richness; the vertical axis shows the extra token usage introduced to provide the interface.
+## RambleDesk on the Generative UI map
 
 ```mermaid
 ---
 config:
   quadrantChart:
     chartWidth: 800
-    chartHeight: 480
+    chartHeight: 640
     pointLabelFontSize: 16
     xAxisLabelFontSize: 16
     yAxisLabelFontSize: 16
@@ -131,23 +136,27 @@ config:
     quadrant4Fill: transparent
 ---
 quadrantChart
-    title UI richness × extra token usage
+    title UI richness × extra token usage · AG-UI: connection layer
     x-axis "Text chat" --> "Direct interaction"
     y-axis "Fewer extra tokens" --> "More extra tokens"
-    "Classic chat": [0.12, 0.08]
-    "askUserQuestion": [0.35, 0.22]
-    "RambleDesk (design target)": [0.75, 0.20] radius: 7, color: #0ea5e9
-    "Dynamic components (e.g. A2UI)": [0.68, 0.58]
-    "Generated HTML / JS": [0.76, 0.84]
+    "Classic chat": [0.10, 0.06]
+    "askUserQuestion": [0.29, 0.12]
+    "Chainlit": [0.18, 0.28]
+    "AI SDK": [0.33, 0.28]
+    "assistant-ui": [0.49, 0.28]
+    "CopilotKit": [0.65, 0.28]
+    "RambleDesk": [0.81, 0.28] radius: 7, color: #0ea5e9
+    "MCP Apps": [0.95, 0.28]
+    "Tambo": [0.40, 0.65]
+    "A2UI": [0.57, 0.65]
+    "json-render": [0.74, 0.65]
+    "OpenUI": [0.90, 0.65]
+    "OpenIntelligentUI": [0.71, 0.90]
 ```
 
-RambleDesk aims for the lower right: **reuse built-in workbenches so the agent supplies materials and parameters, and people can review, annotate, and try the result directly.** The model does not need to write an interface for each feedback request. Interaction is shaped by the available workbenches; dynamically generated interfaces can compose components or layouts as needed.
+**RambleDesk applies the established prebuilt UI approach to work such as review, annotation, and hands-on trials.**
 
-Classic chat provides the zero baseline for UI generation overhead. Tool definitions, parameters, and UI descriptions can still consume tokens. **Positions illustrate design intent, not measured results**, and vary by implementation and task; total token usage for the full task needs separate measurement.
-
-[A2UI](https://a2ui.org/introduction/what-is-a2ui/) describes dynamic components and data. [AG-UI](https://docs.ag-ui.com/introduction) connects events and state without requiring HTML generation. [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) can host prebuilt interfaces. The latter two are described outside the chart because their costs depend on the implementation.
-
-See [interaction approaches and related research](docs/INTERACTION_LANDSCAPE.md) for measurement definitions, more implementations (including CopilotKit, assistant-ui, and Chainlit), and five related papers.
+Positions illustrate selected uses, not measured token costs; a project may span several positions. For an existing overview, see [CopilotKit's Generative UI Spectrum](https://www.copilotkit.ai/generative-ui-spectrum). See [related resources](docs/INTERACTION_LANDSCAPE.md) for project sources and more community maps.
 
 ## Run from source
 
@@ -161,6 +170,14 @@ pnpm dev
 ```
 
 See [development setup](docs/DEVELOPMENT.md), [agent setup and recovery](docs/ACP_MANAGED_SESSIONS.md), the [workbench playground](playground/workbenches/README.md), or the [documentation index](docs/README.md).
+
+## Interaction references
+
+- **Review and annotation:** recent refinements draw on [Plannotator](https://plannotator.ai/) and [Agentation](https://www.agentation.com/).
+- **Related feedback workflows:** [MCP Feedback Enhanced](https://github.com/Minidoracat/mcp-feedback-enhanced) is a close counterpart identified during later comparison.
+- **Brainstorming:** [Miro](https://help.miro.com/hc/en-us/articles/4409706795410-Clustering) and [FigJam](https://help.figma.com/hc/en-us/articles/18711926790423-Sort-and-summarize-stickies-with-FigJam-AI) demonstrate established card-grouping patterns; [Luminate](https://arxiv.org/abs/2310.12953) and [Wordcraft](https://arxiv.org/abs/2107.07430) explore human–AI creative work.
+
+See [sources and design connections](docs/INTERACTION_LANDSCAPE.md#interaction-references-and-related-products) for what informed these refinements and what is related work.
 
 ## Thanks
 

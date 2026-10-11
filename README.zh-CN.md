@@ -16,7 +16,7 @@
 
 和编程 Agent 协作时，你经常需要亲自体验结果、指出问题、决定下一步。RambleDesk 为这些需要你参与的时刻，提供一个桌面工作台。
 
-Agent 在工作台里说明当前进展，展示成果，并告诉你需要体验或决定什么。你可以圈出图片中的问题、批注代码改动，或直接说出自己的想法。RambleDesk 汇集反馈与材料，交回 Agent，继续原来的任务。
+你可以在文稿旁留下修改意见，在图片上圈出问题，也可以直接写下或说出自己的想法。RambleDesk 会把你的意见和对应内容一起交给 Agent，让它根据你的反馈继续完成任务。
 
 [下载安装](https://github.com/l1veIn/rambledesk/releases/latest) · [开始使用](#开始使用) · [文档](docs/README.md)
 
@@ -36,17 +36,18 @@ Agent 可以自己写代码、查资料、运行工具，但推进任务时，�
 
 ### 现在有哪些工作台？
 
-0.5.0 提供以下十种工作台：
+当前源码提供以下十一种工作台：
 
 | 工作台 | 你可以做什么 |
 | --- | --- |
 | 问答 | 像 `askUserQuestion` 一样逐项回答，选择选项并补充说明 |
 | 自由反馈 | 按体验步骤操作，用文字、语音和附件记录意见 |
-| 文稿审阅 | 对段落或选中文字批注，提出建议改写 |
+| 文档审阅 | 阅读 Markdown 文档，对选中文字、跨段范围或全文批注，提出建议改写 |
 | 图片标注与画布 | 在图片或空白画布上画箭头、框和文字，说明位置与改法 |
 | 网页评审 | 查看页面，对具体网页元素留下批注 |
 | 终端试用 | 实际操作 CLI，引用输出并记录体验 |
 | 拖动排序 | 调整候选项顺序，表达优先级或偏好 |
+| 头脑风暴 | 补充想法卡片、分组和选择方向，将自己的修改保留到下一轮 |
 | 差异评审 | 审阅代码差异，对行、范围或分块批注 |
 | 表格审阅 | 对单元格提出建议值和批注 |
 | 音视频审阅 | 播放材料，对时间点或片段留下意见 |
@@ -55,25 +56,31 @@ Agent 可以自己写代码、查资料、运行工具，但推进任务时，�
 
 ## 工作台示例
 
-下面用演示数据展示 **0.5.0** 的三种工作台。
+看看几种具体的协作方式。
 
-### 文稿审阅：对着原文提出修改意见
+### 文档审阅：对着原文提出修改意见
 
-阅读 Agent 写的方案或文稿，在对应段落留下批注，说明哪里需要改、为什么。
+选中文字，在原文旁写下批注或建议改写，再继续阅读。
 
-![文稿审阅：阅读新手引导方案并添加段落批注](docs/screenshots/zh-CN/document-review.webp)
+![文档审阅：选中文字，在原文旁填写批注](docs/screenshots/zh-CN/document-review.gif)
 
 ### 图片标注：指出哪里需要调整
 
 圈出一个区域，直接说明改法，让 Agent 知道你指的是哪里。
 
-![视觉反馈：圈选图片区域并填写意见](docs/screenshots/zh-CN/visual-feedback.webp)
+![图片标注：圈出区域，说明需要调整的位置](docs/screenshots/zh-CN/visual-feedback.gif)
+
+### 头脑风暴：把想法摆出来，再决定下一步
+
+改写卡片、分组和多选方向，再请 Agent 展开、组合或按选中方向继续。你的修改会保留到下一轮。
+
+![头脑风暴：编辑想法卡片、分组并选择方向](docs/screenshots/zh-CN/brainstorm.gif)
 
 ### 自由反馈：试过之后，把想法留下来
 
 跟着 Agent 给出的步骤体验结果，直接写下或说出自己的观察，必要时附上材料。
 
-![自由反馈：按步骤体验新手引导并记录意见](docs/screenshots/zh-CN/free-feedback.webp)
+![自由反馈：跟着体验步骤记录观察和意见](docs/screenshots/zh-CN/free-feedback.gif)
 
 也可以用文字、语音和附件补充意见。可选的 AI 整理帮助你组织表达，原始反馈会保留；暂时没写完的内容会作为草稿保存。
 
@@ -111,16 +118,14 @@ RambleDesk 尝试围绕这些时刻组织交互。工作台把当前成果、需
 
 它适合让 Agent 自主推进、由你阶段性体验和反馈的工作方式。
 
-## RambleDesk 在这张地图上的位置
-
-**获得更直接的图形交互，需要 Agent 额外花多少 Token？** 横轴是 UI 化程度，纵轴是为提供交互界面额外引入的 Token 开销。
+## RambleDesk 在生成式UI地图上的位置
 
 ```mermaid
 ---
 config:
   quadrantChart:
     chartWidth: 800
-    chartHeight: 480
+    chartHeight: 640
     pointLabelFontSize: 16
     xAxisLabelFontSize: 16
     yAxisLabelFontSize: 16
@@ -131,23 +136,27 @@ config:
     quadrant4Fill: transparent
 ---
 quadrantChart
-    title UI 化程度 × 额外 Token 消耗
+    title UI 化程度 × 额外 Token 消耗 · 连接层：AG-UI
     x-axis "文字对话" --> "直接操作"
     y-axis "额外 Token 少" --> "额外 Token 多"
-    "经典 Chat": [0.12, 0.08]
-    "askUserQuestion": [0.35, 0.22]
-    "RambleDesk（设计目标）": [0.75, 0.20] radius: 7, color: #0ea5e9
-    "动态组件（如 A2UI）": [0.68, 0.58]
-    "动态生成 HTML / JS": [0.76, 0.84]
+    "经典 Chat": [0.10, 0.06]
+    "askUserQuestion": [0.29, 0.12]
+    "Chainlit": [0.18, 0.28]
+    "AI SDK": [0.33, 0.28]
+    "assistant-ui": [0.49, 0.28]
+    "CopilotKit": [0.65, 0.28]
+    "RambleDesk": [0.81, 0.28] radius: 7, color: #0ea5e9
+    "MCP Apps": [0.95, 0.28]
+    "Tambo": [0.40, 0.65]
+    "A2UI": [0.57, 0.65]
+    "json-render": [0.74, 0.65]
+    "OpenUI": [0.90, 0.65]
+    "OpenIntelligentUI": [0.71, 0.90]
 ```
 
-RambleDesk 的目标是右下方：**复用做好的工作台，让 Agent 提供材料和参数，人就能直接审阅、标注和试用。** 模型无需为每次反馈重新编写交互界面，代价是交互形式由已有工作台提供；动态生成界面则可以按需组合组件或编写布局。
+**RambleDesk 沿用预置 UI 的思路，是面向审阅、标注和试用等工作场景的一次尝试。**
 
-图中以经典 Chat 无需生成 UI 作为零基线；工具定义、参数和界面描述仍可能消耗 Token。**点位是设计示意，非实测数据**，具体位置随实现和任务变化；完整任务的 Token 总量需要另行测量。
-
-[A2UI](https://a2ui.org/introduction/what-is-a2ui/) 描述动态组件与数据；[AG-UI](https://docs.ag-ui.com/introduction) 负责事件和状态连接，不要求生成 HTML；[MCP Apps](https://github.com/modelcontextprotocol/ext-apps) 可以承载预制界面。后两者的成本取决于具体实现，因此放在图外说明。
-
-更多实现、计量口径和五篇论文见[交互方案与相关研究](docs/INTERACTION_LANDSCAPE.zh-CN.md)，其中也介绍了 CopilotKit、assistant-ui 和 Chainlit。
+点位按典型用法示意，非 Token 实测；同一项目可以覆盖多个位置。已有梳理可参考 [CopilotKit 的生成式 UI 谱系](https://www.copilotkit.ai/generative-ui-spectrum)，项目来源与更多社区地图见[相关资料](docs/INTERACTION_LANDSCAPE.zh-CN.md)。
 
 ## 从源码运行
 
@@ -161,6 +170,14 @@ pnpm dev
 ```
 
 更多说明：[开发环境](docs/DEVELOPMENT.md) · [Agent 配置与恢复](docs/ACP_MANAGED_SESSIONS.md) · [工作台 Playground](playground/workbenches/README.md) · [文档索引](docs/README.md)
+
+## 交互参考
+
+- **审阅与标注：** 本轮交互改进参考了 [Plannotator](https://plannotator.ai/) 和 [Agentation](https://www.agentation.com/)。
+- **同类反馈流程：** [MCP Feedback Enhanced](https://github.com/Minidoracat/mcp-feedback-enhanced) 是后续调研中发现的同类项目。
+- **头脑风暴：** [Miro](https://help.miro.com/hc/en-us/articles/4409706795410-Clustering) 和 [FigJam](https://help.figma.com/hc/en-us/articles/18711926790423-Sort-and-summarize-stickies-with-FigJam-AI) 已有成熟的卡片分组方式；[Luminate](https://arxiv.org/abs/2310.12953) 与 [Wordcraft](https://arxiv.org/abs/2107.07430) 探索了人机共同创作。
+
+具体借鉴与相关工作见[来源及设计联系](docs/INTERACTION_LANDSCAPE.zh-CN.md#交互参考与相关产品)。
 
 ## 致谢
 
