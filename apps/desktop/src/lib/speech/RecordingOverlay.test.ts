@@ -6,7 +6,7 @@ import RecordingOverlay from './RecordingOverlay.svelte'
 import type { SpeechOverlayState } from './speechOverlay'
 import type { SpeechTarget } from './speechDraftQueue'
 
-const target: SpeechTarget = { requestId: 'request-1', requestTitle: 'Review draft', destination: { kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening' } }
+const target: SpeechTarget = { requestId: 'request-1', requestTitle: 'Review draft', destination: { kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening' } }
 function overlay(): SpeechOverlayState {
   return { enabled: true, opacity: 95, selectedGroupId: 'speech-1', shortcuts: { speechAccept: 'Enter', speechDiscard: 'Escape' },
     phase: 'listening', level: 0.2, partial: 'Still speaking', error: '', target,

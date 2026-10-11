@@ -6,16 +6,16 @@ import { createAttachmentController } from './attachmentController'
 import { controllerContext, fileCandidate, mocks, resetAttachmentMocks, screenCandidate } from './attachmentControllerTestHarness'
 
 const target: SpeechTarget = { requestId: 'r', requestTitle: 'Review', destination: {
-  kind: 'review_annotation', annotationId: 'comment', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening',
+  kind: 'review_annotation', annotationId: 'comment', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening',
 } }
 function workspace(): FeedbackWorkspaceView {
   const snapshot = snapshotFeedbackDraftDocument({ type: 'doc', content: [] })
   return { request: { request_id: 'r', status: 'in_progress' }, attachments: [],
     workbench: { type: 'document_review', version: 1, data: {
-      title: 'Script', source_version: 'v1', paragraphs: [{ id: 'p', text: 'Manuscript' }],
+      title: 'Script', source_version: 'v1', markdown: 'Manuscript',
     } }, draft: { saved_revision: 1, body_markdown: '', document_json: JSON.stringify({ ...JSON.parse(snapshot.documentJson),
-      workbenchState: { type: 'document_review', verdict: null, paragraph_marks: [], annotations: [{ id: 'comment',
-        paragraph_id: 'p', kind: 'comment', body: '', replacement: null, start: null, end: null, quote: null }] },
+      workbenchState: { type: 'document_review', verdict: null, annotations: [{ id: 'comment',
+        kind: 'comment', body: '', replacement: null, start: null, end: null, quote: null }] },
     }) },
   } as unknown as FeedbackWorkspaceView
 }

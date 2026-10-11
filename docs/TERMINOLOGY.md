@@ -65,8 +65,8 @@
 | Request Outcome（请求处理结果） | 请求被提交、取消或在允许时直接批准的业务含义，与请求状态和包记录共同表达。 | 是概念边界，不新增同名 wire 字段；取消不产生结构化回答，直接批准不保证有反馈包，不能从 `completed` 推断作答内容。 |
 | Action（体验动作） | Ramble 请求中希望人类执行或观察的一个动作，以 `id` 和 `instruction` 表达。 | 不泛指问答题、选择项或文稿段落；旧数据路径中出现的投影属于兼容实现，不改变这些对象的业务含义。 |
 | Input Target（输入目标） | 一次文字、语音或附件输入所归属的请求及具体正文、答案或批注字段，代码中为 `InputTarget`。 | 下一次输入的位置可以切换，已经开始的采集固定原目标。`SpeechTarget` 是语音侧别名；目标关联不代表作答完成，各类型无须通过 Action 表达全部对象。 |
-| Review Source（审阅原稿） | `document_review` 请求中以 `source_version` 标注来源版本、由稳定段落 id 组成的不可变材料。 | 不属于人类 Draft，不可在当前请求中编辑；换稿建立新请求。 |
-| Review Annotation（审阅批注） | 指向原稿整段或单段文字范围的意见或改写建议，具有稳定 id，不设解决状态。 | 属于 Interaction State；人类编辑和提交意见，Agent 在提交后处理原稿，批注本身不表示已改稿。 |
+| Review Source（审阅原稿） | `document_review` 请求中以 `source_version` 标注来源版本、保存完整 Markdown 原文的不可变材料。 | 不属于人类 Draft，不可在当前请求中编辑；换稿建立新请求。 |
+| Review Annotation（审阅批注） | 指向全文或原始 Markdown 全篇 Unicode 标量范围的意见或改写建议，具有稳定 id，不设解决状态。 | 属于 Interaction State；人类编辑和提交意见，Agent 在提交后处理原稿，批注本身不表示已改稿。 |
 | Review Verdict（审阅判断） | 人类对整稿显式作出的 `ready` 或 `changes_requested` 判断。 | 是类型结果，不是请求状态或执行权限；仍须经统一提交发布。 |
 | Action Group | 用标准 Blockquote 表达的 `@Action` 归属容器。 | 同一 Action 再次打开时创建新容器，不与旧区间合并。 |
 | Tidy | 对尚未整理的语音文本进行表达整理，可由人类手动触发或按已启用的规则自动触发。 | 处理确认前的待写入语音，或当前请求正文、答案和批注中的 pending 语音段；不处理普通键入或粘贴，不自动提交，不是 Cooking。 |
@@ -80,8 +80,9 @@
 - CURRENT：工作台类型通过共享请求、草稿和反馈包合同进入同一生命周期。目录中的 `purpose` / `returns` 描述用途，`interaction` 是分类元数据，不承诺可替换的通用渲染器协议。
 - CURRENT：`document_json` 是版本化 Draft envelope，包含 TipTap `doc` 与可选 `workbenchState`；字段名不意味着整份草稿都是 TipTap 节点。`body_markdown` 仅由 `doc` 派生。
 - CURRENT：类型或版本未知时只读保留请求材料、正文与交互数据；不覆盖保存、不提交、不通过直接批准绕过类型完整性。未知合同不等于请求终态；显式取消仍使用请求级生命周期。
-- CURRENT：发现目录提供十种正式类型：`ramble`、`questions`、`document_review`、`web_review`、`terminal`、`sort`、`visual_feedback`、`diff_review`、`table_review`、`media_review`。后四者称为“视觉反馈”“差异评审”“表格评审”“媒体评审”，分别收集空间描绘、针对 diff 的批注、单元格建议与时间轴意见，不定义审批工作流。`single_choice` 仅保留旧合同兼容，`rating_review` 仅在开发验收构建中注册，不计入正式数量。问答的 `cancelled` 和旧单选的 `status` 不重新定义 Request Outcome；细节见[反馈协议](PROTOCOL.md)。
+- CURRENT：当前源码发现目录提供十一种正式类型：`ramble`、`questions`、`document_review`、`web_review`、`terminal`、`sort`、`brainstorm`、`visual_feedback`、`diff_review`、`table_review`、`media_review`。后四者称为“视觉反馈”“差异评审”“表格评审”“媒体评审”，分别收集空间描绘、针对 diff 的批注、单元格建议与时间轴意见，不定义审批工作流。`single_choice` 仅保留旧合同兼容，`rating_review` 仅在开发验收构建中注册，不计入正式数量。问答的 `cancelled` 和旧单选的 `status` 不重新定义 Request Outcome；细节见[反馈协议](PROTOCOL.md)。
 - CURRENT：全屏页签是工作台类型主动开启的客户端布局能力，不是新请求或新草稿。普通模板默认关闭；开启后同一请求的普通与全屏视图复用草稿及运行状态，关闭页签不代表停止后端资源。
+- CURRENT：头脑风暴的 `phase` 是同看板的发散／整理／聚焦状态，不是强制流程节点。`intent` 表示人提交后希望 Agent 做的下一步；`proceed` 是按选中方向继续原任务，不是 Request Outcome 或额外执行授权。`inherit_from_request_id` 初始化兼容看板的下一轮，不代表同一任务只能使用该类型。
 
 ## 会话与 ACP 术语
 

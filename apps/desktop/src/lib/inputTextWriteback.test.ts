@@ -8,7 +8,7 @@ import type { SpeechTarget } from './speech/speechTargets'
 import { applyInputTextWriteback, type InputTextWriteInput } from './inputTextWriteback'
 
 const target: SpeechTarget = { requestId: 'r', requestTitle: 'Review', destination: {
-  kind: 'review_annotation', annotationId: 'a', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening',
+  kind: 'review_annotation', annotationId: 'a', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening',
 } }
 const input: InputTextWriteInput = { target, id: 'attachment-1', text: '![Reference](attachment://a1)' }
 
@@ -17,10 +17,10 @@ function fixture(kind: 'document_review' | 'questions' = 'document_review', text
   const review = kind === 'document_review'
   return { request: { request_id: 'r', status: 'in_progress' },
     workbench: { type: kind, version: 1, data: review
-      ? { title: 'Script', source_version: 'v1', paragraphs: [{ id: 'p', text: 'Original manuscript' }] }
+      ? { title: 'Script', source_version: 'v1', markdown: 'Original manuscript' }
       : { questions: [{ id: 'q', prompt: 'Choose', allowOther: true, options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] }] } },
     draft: { document_json: JSON.stringify({ ...JSON.parse(snapshot.documentJson), opaque: { keep: true }, workbenchState: review
-      ? { type: kind, verdict: null, paragraph_marks: [], annotations: [{ id: 'a', paragraph_id: 'p', start: null, end: null,
+      ? { type: kind, verdict: null, annotations: [{ id: 'a', start: null, end: null,
         quote: null, kind: 'suggestion', body: text, replacement: '' }] }
       : { type: kind, answers: [{ id: 'q', value: text, label: text, wasCustom: true }] } }),
       body_markdown: snapshot.bodyMarkdown, saved_revision: 1 }, attachments: [],

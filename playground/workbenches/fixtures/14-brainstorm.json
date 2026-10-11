@@ -1,0 +1,23 @@
+{
+  "title": "头脑风暴 · 第一次有用的反馈",
+  "what_happened": "一起想想怎样让新用户完成第一次有用的反馈。请修改卡片、补充自己的想法、分组并选择方向；下一步意图会在提交后交给 Agent。愿意体验多轮时可选展开或组合，再检查下一轮是否保留你的修改。",
+  "workbench": {
+    "type": "brainstorm",
+    "version": 1,
+    "data": {
+      "title": "怎样让新用户完成第一次有用的反馈？",
+      "groups": [
+        { "id": "first-action", "title": "先做一件小事" },
+        { "id": "confidence", "title": "知道反馈去了哪里" }
+      ],
+      "cards": [
+        { "id": "small-task", "title": "从一个示例任务开始", "body": "选一个简单问题，先给出一句真实意见，再介绍其他能力。", "group_id": "first-action", "source_card_ids": [] },
+        { "id": "own-screenshot", "title": "带一张自己的截图", "body": "圈出截图里最困惑的地方，让第一次反馈和真实工作有关。", "group_id": "first-action", "source_card_ids": [] },
+        { "id": "visible-return", "title": "看见 Agent 怎样接着做", "body": "提交后回到原会话查看 Agent 的下一步，随时能回看自己的意见。", "group_id": "confidence", "source_card_ids": [] },
+        { "id": "keep-draft", "title": "离开后还能接着写", "body": "保存没写完的意见，重新打开后继续，不用从头组织语言。", "group_id": "confidence", "source_card_ids": [] },
+        { "id": "full-tour", "title": "一次介绍全部工作台", "body": "做一份覆盖全部类型的引导；讨论它是否会打断第一次真实反馈。", "group_id": null, "source_card_ids": [] }
+      ]
+    }
+  },
+  "attachments": [{ "file_name": "14-brainstorm.md", "path": "materials/14-brainstorm.md" }]
+}

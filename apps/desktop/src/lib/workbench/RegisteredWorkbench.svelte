@@ -25,6 +25,7 @@
   export let onSelectAction: (id: string, index: number, title: string) => void = () => {}
   export let onStateChange: (state: WorkbenchState) => void = () => {}
   export let onOpenReview: (() => void) | undefined = undefined
+  export let onOpenFeedback: (() => void) | undefined = undefined
   export let onQuote: ((text: string) => void) | undefined = undefined
 
   let root: HTMLDivElement
@@ -43,6 +44,7 @@
       updateState: (next) => { if (!closed) onStateChange(next) },
       quote: (text) => { if (!closed) onQuote?.(text) },
       openExpanded: definition?.layout.expanded ? onOpenReview : undefined,
+      openFeedback: onOpenFeedback,
       selectAction: (id, index, title) => { if (!closed) onSelectAction(id, index, title) },
     },
   } satisfies WorkbenchViewContext

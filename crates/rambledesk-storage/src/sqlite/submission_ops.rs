@@ -300,7 +300,9 @@ impl SqliteFeedbackStore {
             }
             sqlx::query(
                 "INSERT INTO drafts (request_id, body_markdown, revision, updated_at) \
-                 VALUES (?1, '', 1, ?2)",
+                 VALUES (?1, '', 1, ?2) \
+                 ON CONFLICT(request_id) DO UPDATE SET \
+                     revision = excluded.revision, updated_at = excluded.updated_at",
             )
             .bind(request_id)
             .bind(now)

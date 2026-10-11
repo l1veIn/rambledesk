@@ -27,6 +27,8 @@ export type WorkbenchViewHost = {
   updateState: (state: WorkbenchState) => void
   quote: (text: string) => void
   openExpanded?: () => void
+  /** Open the existing overall-feedback drawer without submitting or changing input. */
+  openFeedback?: () => void
   selectAction: (id: string, index: number, title: string) => void
   controller?: WorkbenchController
 }
@@ -74,7 +76,7 @@ export type WorkbenchDefinition = {
   complete: (spec: WorkbenchSpec, state: WorkbenchState | null) => boolean
   submissionMessage?: (spec: WorkbenchSpec, state: WorkbenchState | null) => string | null
   supportsApproval?: boolean
-  layout: { padded: boolean; interactivePreview: boolean; expanded: boolean }
+  layout: { padded: boolean; interactivePreview: boolean; expanded: boolean; feedbackPlacement?: 'column' | 'drawer' }
   fields?: readonly WorkbenchFieldAdapter[]
   loadView: () => Promise<{ default: Component<{ context: WorkbenchViewContext }> }>
   createController?: (context: WorkbenchControllerContext) => WorkbenchController

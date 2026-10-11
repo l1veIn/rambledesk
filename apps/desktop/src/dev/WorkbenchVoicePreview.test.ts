@@ -113,19 +113,25 @@ describe('simulated voice workbench preview uses the shared controller and write
     view = mount(WorkbenchPreview, { target: document.body })
     expect(button('开始一段语音').disabled).toBe(true)
     await vi.waitFor(() => expect(document.querySelector('[data-review-text]')).not.toBeNull())
-    const source = document.querySelector('[data-review-text]')!.textContent
-    document.querySelector<HTMLButtonElement>('button[aria-label="Speak comment on paragraph 1"]')!.click()
+    const sourceText = () => Array.from(document.querySelectorAll('[data-review-text]')).map((node) => node.textContent).join('\n')
+    const source = sourceText()
+    button('Comment on document').click()
+    await vi.waitFor(() => expect(document.querySelector('[data-review-field="body"]')).not.toBeNull())
+    expect(button('开始一段语音').disabled).toBe(true)
+    document.querySelector<HTMLButtonElement>('[aria-label="Speak comment"]')!.click()
     await vi.waitFor(() => expect(button('开始一段语音').disabled).toBe(false))
     input().value = 'Pin this to the original comment'
     input().dispatchEvent(new Event('input', { bubbles: true }))
     button('开始一段语音').click()
     await vi.waitFor(() => expect(button('完成转写').disabled).toBe(false))
-    const editor = document.querySelector<HTMLElement>('.feedback-prose[contenteditable="true"]')!
-    editor.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    button('Overall feedback and submit').click()
+    await vi.waitFor(() => expect(document.querySelector<HTMLElement>('[data-feedback-region]')?.inert).toBe(false))
+    const editor = document.querySelector<HTMLElement>('[data-feedback-region] .feedback-prose[contenteditable="true"]')!
+    editor.focus()
     button('完成转写').click()
     await vi.waitFor(() => expect(inputText(document.querySelector('[data-review-field="body"]'))).toBe('Pin this to the original comment'))
     expect(editor.textContent).not.toContain('Pin this')
-    expect(document.querySelector('[data-review-text]')!.textContent).toBe(source)
+    expect(sourceText()).toBe(source)
     input().value = 'The next segment belongs to feedback notes'
     input().dispatchEvent(new Event('input', { bubbles: true }))
     button('开始一段语音').click()

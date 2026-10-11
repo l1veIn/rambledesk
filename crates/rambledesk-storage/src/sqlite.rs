@@ -27,6 +27,8 @@ use thiserror::Error;
 mod activity_history_ops;
 mod activity_ops;
 mod backup;
+mod brainstorm_attachments;
+mod brainstorm_ops;
 mod deletion_ops;
 mod delivery_ops;
 mod managed_ops;

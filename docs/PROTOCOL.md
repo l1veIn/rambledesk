@@ -69,16 +69,19 @@ Local Integration Server 的 `/mcp` 提供 Generic MCP tools，`/api/feedback/*`
 | --- | --- | --- |
 | `ramble` v1 | `data.actions` 给出体验动作；反馈正文提供人类输入。 | `kind: "free_feedback"`；实际正文与附件在包的公共位置。 |
 | `questions` v1 | 一个或多个问题，逐题选择稳定 `value`，允许时可键入或口述自定义回答；每题都需回答。单题且 `allowOther:false` 覆盖严格单选。 | `answers: [{id,value,label,wasCustom,index?}], cancelled: false`。 |
-| `document_review` v1 | 审阅不可变原稿，可作段落标记、批注与改写建议；必须显式给出整稿判断。 | `source_version, verdict, annotations, paragraph_marks`；详见[文稿审阅合同](workbench/document-review.md)。 |
+| `document_review` v1 | 审阅不可变 Markdown 原文，按全篇 Unicode 标量范围或全文批注、提出改写建议；必须显式给出整稿判断。 | `source_version, verdict, annotations`；详见[文档审阅合同](workbench/document-review.md)。 |
 | `web_review` v1 | 浏览真实网页，对选中元素就地批注并集中回看；网页需允许嵌入，跨源页面需接入评审桥接脚本。 | `source_version, annotations`，每条保留页面 URL、视口、元素定位和意见；详见[网页评审](workbench/web-review.md)。 |
 | `terminal` v1 | 在请求目录中亲自试用 CLI，从体验 Markdown 复制命令，输出可引用到反馈正文。 | `sessions`，保留目录、shell、尺寸、ANSI 转录、最新画面与会话终态；详见[终端试用](workbench/terminal.md)。 |
 | `sort` v1 | 对条目拖动排序、编辑名称、删除和恢复。 | `order`、同序的最终 `items` 与 `removed_ids`；显式删除全部条目可返回空列表，旧结果仅含 `order` 时按原输入名称解释。 |
+| `brainstorm` v1 | 补充、编辑、分组和选择想法卡片，暂放内容并显式决定下一步。 | 完整看板、选中 ID、阶段、`intent`、`instruction` 及轮次身份；详见[头脑风暴](workbench/brainstorm.md)。 |
 | `visual_feedback` v1 | 在固定图片或原生空白画布上绘制视觉意见。 | 来源版本、画布尺寸、结构化标注和合成图片附件；详见[视觉反馈](workbench/visual-feedback.md)。 |
 | `diff_review` v1 | 针对固定 diff 的修改前后行、行范围或改动块批注。 | 来源版本与带精确 diff 锚点的批注；详见[差异评审](workbench/diff-review.md)。 |
 | `table_review` v1 | 浏览固定行列，对单元格提出改值建议和批注。 | 来源版本、按行列 ID 定位的 changes 与 comments；详见[表格审阅](workbench/table-review.md)。 |
 | `media_review` v1 | 播放固定音视频，对时间点或片段批注。 | 来源版本、duration_ms 和按毫秒定位的 comments；素材身份保存在请求合同及附件中。详见[音视频审阅](workbench/media-review.md)。 |
 
-发现目录提供上述十种正式类型。新方案选择请求使用 `questions`，不再创建独立 `single_choice` 工作台。`describe_workbench(single_choice)` 提示改用单题问答。开发 feature 另有 `rating_review` 验收样例，不计入正式数量。
+当前源码的发现目录提供上述十一种正式类型。新方案选择请求使用 `questions`，不再创建独立 `single_choice` 工作台。`describe_workbench(single_choice)` 提示改用单题问答。开发 feature 另有 `rating_review` 验收样例，不计入正式数量。
+
+`brainstorm` 的 Agent 输入是 `{title, inherit_from_request_id?, groups?, cards?}`，只提供新增卡片和分组。服务端在创建事务中解析继承，生成带 `source_version`、`board_id`、`round` 和 `initial_board` 的不可变工作区输入；Agent MUST NOT 提交这些服务端字段。来源必须为同会话已完成且已发布的兼容看板，托管会话按可信身份隔离，外部 host/session 只作关联检查。继承不改变通用等待或续接规则，也不把同一任务限制为一种工作台。
 
 旧 `single_choice` v1 合同保留兼容：已知旧客户端仍可原样创建/重试，已有请求、草稿和结果保持 `selected_option_id` 及 `status`，不静默重写为 `answers[]`，以免改变请求幂等比较或结果含义。客户端使用同一个问答视图承载旧单选，兼容层转换展示和交互状态，不迁移持久输入。未回答状态仍不能成功提交。
 
@@ -102,7 +105,9 @@ waiting → in_progress → completed
 - 已存在、不可变输入一致：返回原请求，包括原完成或取消结果，不重新打开。
 - 已存在、不可变输入不同：返回 `REQUEST_CONFLICT`。
 
-不可变输入包括规范化后的 `host_id`、`host_session_id`、`title`、`what_happened`、有序 `actions` / `context_refs` / `attachments`、`source_hint`、`allow_finish` 和 `final_summary`。提供 `workbench` 时，其完整类型、版本和专属输入也参与比较；文稿原文、段落顺序与来源版本不能在同一请求内改写。附件比较使用实际读入的文件名、媒体类型、字节数和内容哈希，不以路径字符串替代内容。未指定工作台的旧请求保持原兼容哈希；不允许客户端自行推导或绕过服务端幂等判断。
+不可变输入包括规范化后的 `host_id`、`host_session_id`、`title`、`what_happened`、有序 `actions` / `context_refs` / `attachments`、`source_hint`、`allow_finish` 和 `final_summary`。提供 `workbench` 时，其完整类型、版本和专属输入也参与比较；Markdown 原文与来源版本不能在同一请求内改写。附件比较使用实际读入的文件名、媒体类型、字节数和内容哈希，不以路径字符串替代内容。未指定工作台的旧请求保持原兼容哈希；不允许客户端自行推导或绕过服务端幂等判断。
+
+头脑风暴的幂等比较使用 Agent 原始输入，包括继承来源与新增提案；服务端解析出的看板和复制附件不要求 Agent 重新提交。相同原始输入重试直接返回已有请求，不重复继承、更换附件 ID 或覆盖人的草稿；已有 ID 的输入不同仍返回冲突。
 
 ## 查询、等待与恢复
 

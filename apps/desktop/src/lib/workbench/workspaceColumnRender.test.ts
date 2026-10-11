@@ -93,6 +93,26 @@ describe('workbench container composition', () => {
     imagePaste: { status: { availability: 'unavailable', source: 'none' }, implementation: {} },
   } as never
 
+  it.each([
+    ['saved', 'Saved · r12'],
+    ['saving', 'Saving…'],
+    ['unsaved', 'Waiting to autosave'],
+    ['error', 'Save failed'],
+  ] as const)('keeps the actual %s save state beside the closed drawer entry', (savePhase, label) => {
+    const body = render(WorkbenchContainer, { props: {
+      workspace, transport: {} as never, capabilities: unavailable, formatTime: () => '', workbench,
+      feedbackPlacement: 'drawer', savedRevision: 12, savePhase,
+    } }).body
+    const controls = body.slice(body.indexOf('data-workbench-display-controls'), body.indexOf('workspace-columns relative'))
+    expect(controls).toContain('data-workbench-save-status')
+    expect(controls).toContain(label)
+    expect(controls).toContain('Overall feedback and submit')
+    expect(controls).toContain('aria-expanded="false"')
+    expect(body.match(/class="feedback-column /g)).toHaveLength(1)
+    expect(body).toContain('data-feedback-region="" inert=""')
+    expect(body).not.toContain('Return to workbench')
+  })
+
   it('keeps the Agent status inside the feedback column, never above the workbench', () => {
     const body = render(WorkbenchContainer, { props: {
       workspace,

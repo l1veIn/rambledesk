@@ -12,7 +12,7 @@
 <script lang="ts">
   import { onMount, tick, type Snippet } from 'svelte'
   import { Pane, PaneGroup, PaneResizer } from 'paneforge'
-  import { Minimize2, PanelRight, FileText } from '@lucide/svelte'
+  import { Minimize2, PanelRight, FileText, X } from '@lucide/svelte'
   import { Button } from '$lib/components/ui/button'
 
   import { Skeleton } from '$lib/components/ui/skeleton'
@@ -49,6 +49,7 @@
   export let loadingWorkspace = false
   /** Presentation capabilities supplied by the composed view, independent of its contract. */
   export let reviewMode = false
+  export let feedbackPlacement: 'column' | 'drawer' = 'column'
   export let onReturnToWorkbench: (() => void) | undefined = undefined
   /** Keep an interactive preview usable when the feedback column stacks below it. */
   export let interactivePreview = false
@@ -114,7 +115,8 @@
    */
   const WIDE_COLUMNS_QUERY = '(min-width: 1180px)'
   const wideColumns = mediaQuery(WIDE_COLUMNS_QUERY)
-  $: stackedPreview = interactivePreview && !$wideColumns && !reviewMode
+  $: focusLayout = reviewMode || feedbackPlacement === 'drawer'
+  $: stackedPreview = interactivePreview && !$wideColumns && !focusLayout
   const savedFeedbackWidth = savedPaneLayout(FEEDBACK_COLUMN_LAYOUT_KEY)?.[0] ?? null
 
   let columnsWidth = 0
@@ -134,19 +136,56 @@
   let columnsLayoutReady = false
   let containerRoot: HTMLElement
   let feedbackVisible = false
+  let feedbackComposing = false
+  let feedbackTrigger: HTMLButtonElement | null = null
+  let feedbackClose: HTMLButtonElement | null = null
   let contextVisible = false
   let layoutRequestId: string | undefined
   $: if (workspace?.request.request_id !== layoutRequestId) {
     layoutRequestId = workspace?.request.request_id
     feedbackVisible = false
+    feedbackComposing = false
     contextVisible = false
   }
 
-  function handleReviewKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape' || event.defaultPrevented || !reviewMode || !feedbackVisible) return
-    if (event.target instanceof HTMLElement && event.target.closest('dialog, [role="dialog"], [role="alertdialog"]')) return
-    event.preventDefault()
+  async function closeFeedback() {
+    const trigger = feedbackTrigger
     feedbackVisible = false
+    feedbackComposing = false
+    await tick()
+    if (!feedbackVisible && trigger?.isConnected) trigger.focus({ preventScroll: true })
+  }
+
+  async function toggleFeedback() {
+    if (feedbackVisible) { await closeFeedback(); return }
+    await openFeedback()
+  }
+
+  export async function openFeedback() {
+    if (!workspace || !focusLayout) return
+    feedbackVisible = true
+    await tick()
+    if (feedbackVisible) feedbackClose?.focus({ preventScroll: true })
+  }
+
+  function handleReviewKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.keyCode === 229 || feedbackComposing || !focusLayout || !feedbackVisible) return false
+    if (event.target instanceof HTMLElement && event.target.closest('dialog, [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="combobox"]')) return false
+    if (event.target instanceof Node && !containerRoot.contains(event.target)) return false
+    event.preventDefault()
+    void closeFeedback()
+    return true
+  }
+
+  function handleFeedbackEditorKeydown(event: KeyboardEvent) {
+    if (!(event.target instanceof HTMLElement)) return
+    const editor = event.target.closest('.feedback-prose[contenteditable="true"]')
+    if (!editor || editor.getAttribute('aria-expanded') === 'true' || editor.hasAttribute('aria-activedescendant')) return
+    // A popup retaining editor focus still owns Escape; portal controls are not descendants.
+    if (document.querySelector('[role="menu"][data-state="open"], [role="listbox"][data-state="open"], [role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], dialog[open]')) return
+    // ProseMirror consumes native Escape (keyCode 27) before a bubbling handler.
+    // Capture only the overall editor, never workbench cards or toolbar controls.
+    if (handleReviewKeydown(event)) event.stopPropagation()
   }
 
   function tr(source: string, values: Record<string, string | number> = {}) {
@@ -154,7 +193,7 @@
   }
 
   function saveColumnsLayout(layout: number[]) {
-    if (!columnsLayoutReady || !$wideColumns || reviewMode) return
+    if (!columnsLayoutReady || !$wideColumns || focusLayout) return
     const width = feedbackWidthFromLayout(layout, columnsWidth)
     if (width !== null) {
       savePaneLayout(FEEDBACK_COLUMN_LAYOUT_KEY, [width, Math.max(0, Math.round(columnsWidth - width))])
@@ -224,7 +263,9 @@
   bind:this={containerRoot}
   data-workbench-scope
   data-workbench-review-mode={reviewMode}
+  data-workbench-feedback-placement={focusLayout ? 'drawer' : 'column'}
   class:workbench-review-mode={reviewMode}
+  class:workbench-focus-layout={focusLayout}
   class:workbench-feedback-visible={feedbackVisible}
   class:workbench-context-visible={contextVisible}
   class:workbench-stacked-preview={stackedPreview}
@@ -243,15 +284,19 @@
       </div>
     </div>
   {:else if workspace}
-    {#if reviewMode}
+    {#if focusLayout}
       <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 border-b px-3 py-2" data-workbench-display-controls>
-        {#if reviewMode}
           <span class="mr-auto min-w-0 truncate text-sm font-medium">{workspace.request.title}</span>
+          <span class="text-xs text-muted-foreground" class:text-destructive={savePhase === 'error'} aria-live="polite" data-workbench-save-status>
+            {#if savePhase === 'saving'}{tr('Saving…')}
+            {:else if savePhase === 'unsaved'}{tr('Waiting to autosave')}
+            {:else if savePhase === 'error'}{tr('Save failed')}
+            {:else}{tr('Saved')} · r{savedRevision}{/if}
+          </span>
           <Button variant="ghost" size="sm" aria-expanded={contextVisible}
             onclick={() => contextVisible = !contextVisible}><FileText class="size-4" />{tr('Request context')}</Button>
-          <Button variant="outline" size="sm" aria-expanded={feedbackVisible} aria-controls="feedback-column-pane"
-            onclick={() => feedbackVisible = !feedbackVisible}><PanelRight class="size-4" />{tr('Overall feedback and submit')}</Button>
-        {/if}
+          <Button bind:ref={feedbackTrigger} variant="outline" size="sm" aria-expanded={feedbackVisible} aria-controls="feedback-column-pane"
+            onclick={() => void toggleFeedback()}><PanelRight class="size-4" />{tr('Overall feedback and submit')}</Button>
         {#if reviewMode && onReturnToWorkbench}
           <Button variant="outline" size="sm" onclick={onReturnToWorkbench}><Minimize2 class="size-4" />{tr('Return to workbench')}</Button>
         {/if}
@@ -289,7 +334,17 @@
           minSize={$wideColumns ? feedbackMinPercent : FEEDBACK_PANE_MIN_PERCENT}
           defaultSize={$wideColumns ? feedbackPanePercent : TASK_BRIEF_DEFAULT_SIZE}
         >
-          <div class="flex h-full min-h-0 min-w-0 flex-col" data-feedback-region>
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions (Own Escape only in this drawer's rich editor before ProseMirror handles it.) -->
+          <div class="flex h-full min-h-0 min-w-0 flex-col" data-feedback-region inert={focusLayout && !feedbackVisible}
+            onkeydowncapture={handleFeedbackEditorKeydown}
+            oncompositionstart={() => feedbackComposing = true} oncompositionend={() => feedbackComposing = false}>
+            {#if focusLayout}
+              <div class="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2" data-feedback-drawer-heading>
+                <span class="text-sm font-medium">{tr('Overall feedback and submit')}</span>
+                <Button bind:ref={feedbackClose} variant="ghost" size="icon-sm" aria-label={tr('Close')}
+                  onclick={() => void closeFeedback()}><X class="size-4" /></Button>
+              </div>
+            {/if}
             <div class="min-h-0 min-w-0 flex-1 overflow-hidden">
               <FeedbackColumn
                 bind:this={feedbackEditor}
@@ -366,13 +421,13 @@
      Scroll the workspace column instead of squeezing the interactive page away. */
   .workbench-stacked-preview :global(.workspace-columns) { overflow-y: auto; overscroll-behavior: contain; }
   .workbench-stacked-preview :global(.workbench-layout) { min-height: 1050px; }
-  .workbench-review-mode :global(.workbench-layout) { flex-direction: row !important; }
-  .workbench-review-mode :global(.workbench-main-pane) { flex: 1 1 100% !important; }
-  .workbench-review-mode :global(.workbench-pane-resizer) { display: none; }
-  .workbench-review-mode :global([data-request-context]) { display: none; }
-  .workbench-review-mode.workbench-context-visible :global([data-request-context]) { display: block; }
-  .workbench-review-mode :global([data-workbench-content]) { display: flex; flex-direction: column; overflow: auto; }
-  .workbench-review-mode :global(.workbench-feedback-pane) {
+  .workbench-focus-layout :global(.workbench-layout) { flex-direction: row !important; }
+  .workbench-focus-layout :global(.workbench-main-pane) { flex: 1 1 100% !important; }
+  .workbench-focus-layout :global(.workbench-pane-resizer) { display: none; }
+  .workbench-focus-layout :global([data-request-context]) { display: none; }
+  .workbench-focus-layout.workbench-context-visible :global([data-request-context]) { display: block; }
+  .workbench-focus-layout :global([data-workbench-content]) { display: flex; flex-direction: column; overflow: auto; }
+  .workbench-focus-layout :global(.workbench-feedback-pane) {
     display: none;
     position: absolute;
     inset: 0 0 0 auto;
@@ -383,5 +438,5 @@
     border-left: 1px solid var(--border);
     box-shadow: -8px 0 24px rgb(0 0 0 / 0.08);
   }
-  .workbench-review-mode.workbench-feedback-visible :global(.workbench-feedback-pane) { display: block; }
+  .workbench-focus-layout.workbench-feedback-visible :global(.workbench-feedback-pane) { display: block; }
 </style>

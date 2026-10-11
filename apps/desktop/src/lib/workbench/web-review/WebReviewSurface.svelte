@@ -15,6 +15,7 @@
   export let onAnnotationClick: (id: string) => void = () => undefined
   export let onSelectionRect: (rect: WebReviewRect | null) => void = () => undefined
   export let onFocusMissing: (reason: 'page_changed' | 'element_missing') => void = () => undefined
+  export let onSelectionCancel: () => void = () => undefined
 
   let root: HTMLDivElement
   let frame: HTMLIFrameElement
@@ -54,6 +55,7 @@
     anchor = null
     controller = createWebReviewFrame({ iframe: frame, url: nextUrl, onState: (state) => onStatus(state),
       onSelection: (selection) => onSelect(selection), onAnnotationClick: (id) => onAnnotationClick(id),
+      onSelectionCancel: () => onSelectionCancel(),
       onAnchor: (rect) => { anchor = rect; updateAnchor() }, onFocusMissing: (reason) => onFocusMissing(reason) })
     controller.setMode(mode)
     controller.setAnnotations(annotations.map((item, index) => ({ id: item.id, number: index + 1, selector: item.element.selector, page_url: item.page_url })), selectedId)

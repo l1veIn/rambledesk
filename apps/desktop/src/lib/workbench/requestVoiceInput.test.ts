@@ -12,7 +12,7 @@ import RambleSessionController from './RambleSessionController.svelte'
 
 const requestId = previewFixtures.workspace.request.request_id
 const comment: SpeechTarget = { requestId, requestTitle: 'Review', destination: {
-  kind: 'review_annotation', annotationId: 'annotation-1', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening',
+  kind: 'review_annotation', annotationId: 'annotation-1', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening',
 } }
 const replacement: SpeechTarget = { ...comment, destination: { ...comment.destination, field: 'replacement' } as SpeechTarget['destination'] }
 let view: ReturnType<typeof mount> | undefined

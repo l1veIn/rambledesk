@@ -69,7 +69,7 @@ describe('Ramble input preparation through the mounted controller', () => {
 
   it('passes the pinned field to clipboard image persistence', async () => {
     const h = harness()
-    const target: SpeechTarget = { requestId: request.request_id, requestTitle: 'Review', destination: { kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening' } }
+    const target: SpeechTarget = { requestId: request.request_id, requestTitle: 'Review', destination: { kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening' } }
     const imported = h.view.importClipboardNow(target)
     const candidate = { id: 'capture-1', source: 'clipboard-image' as const, fileName: 'capture.png', mediaType: 'image/png', byteLength: 4, readBytes: async () => new ArrayBuffer(4), dispose: vi.fn(async () => {}) }
     target.destination = { kind: 'document', action: null }

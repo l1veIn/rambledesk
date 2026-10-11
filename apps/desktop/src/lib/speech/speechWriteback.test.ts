@@ -3,16 +3,16 @@ import type { ReviewAnnotation } from '../generated/feedback'
 import { decodeFeedbackDraftEnvelope, snapshotFeedbackDraftDocument } from '../feedbackDraftDocument'
 import { applySpeechWriteback, speechDocumentOperation, type SpeechWriteInput, type SpeechWriteWorkspace } from './speechWriteback'
 
-const annotation: ReviewAnnotation = { id: 'a', paragraph_id: 'p', start: 1, end: 2, quote: '😀', kind: 'suggestion', body: 'Existing note', replacement: '' }
+const annotation: ReviewAnnotation = { id: 'a', start: 1, end: 2, quote: '😀', kind: 'suggestion', body: 'Existing note', replacement: '' }
 const input: SpeechWriteInput = { requestId: 'r', requestTitle: 'Review', id: 'segment-1', text: 'Spoken words', destination: {
-  kind: 'review_annotation', annotationId: 'a', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening',
+  kind: 'review_annotation', annotationId: 'a', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening',
 } }
 function fixture(): SpeechWriteWorkspace {
   const snapshot = snapshotFeedbackDraftDocument({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Supplementary note' }] }] })
   return { request: { request_id: 'r', status: 'in_progress' }, workbench: { type: 'document_review', version: 1,
-    data: { title: 'Script', source_version: 'v1', paragraphs: [{ id: 'p', text: 'A😀B' }] } },
+    data: { title: 'Script', source_version: 'v1', markdown: 'A😀B' } },
   draft: { document_json: JSON.stringify({ ...JSON.parse(snapshot.documentJson), opaque: { nested: ['keep'] },
-    workbenchState: { type: 'document_review', verdict: null, annotations: [structuredClone(annotation)], paragraph_marks: [] } }), body_markdown: snapshot.bodyMarkdown } }
+    workbenchState: { type: 'document_review', verdict: null, annotations: [structuredClone(annotation)] } }), body_markdown: snapshot.bodyMarkdown } }
 }
 function updateAnnotation(workspace: SpeechWriteWorkspace, patch: Partial<ReviewAnnotation>): void {
   const envelope = JSON.parse(workspace.draft.document_json!)
@@ -46,14 +46,16 @@ describe('speech writeback', () => {
     expect(state(applySpeechWriteback(workspace, replacement).documentJson).annotations[0].replacement).toBe('Existing wording\nSpoken words')
   })
 
-  it.each(['open', 'resolved'])('continues a legacy %s note without carrying its obsolete status forward', (status) => {
+  it('writes only to the selected note when several comments share a source range', () => {
     const workspace = fixture()
     const envelope = JSON.parse(workspace.draft.document_json!)
-    envelope.workbenchState.annotations[0].status = status
+    envelope.workbenchState.annotations.push({ ...annotation, id: 'b', body: 'Independent note' })
     workspace.draft.document_json = JSON.stringify(envelope)
-    const next = applySpeechWriteback(workspace, input)
-    expect(state(next.documentJson).annotations[0]).toEqual({ ...annotation, body: 'Existing note\nSpoken words' })
-    expect(state(workspace.draft.document_json!).annotations[0].status).toBe(status)
+    const next = applySpeechWriteback(workspace, { ...input, destination: { ...input.destination, annotationId: 'b' } } as SpeechWriteInput)
+    expect(state(next.documentJson).annotations).toEqual([
+      annotation, { ...annotation, id: 'b', body: 'Independent note\nSpoken words' },
+    ])
+    expect(state(workspace.draft.document_json!).annotations[1].body).toBe('Independent note')
   })
 
   it('uses durable receipts after reload and preserves later manual edits on an exact retry', () => {

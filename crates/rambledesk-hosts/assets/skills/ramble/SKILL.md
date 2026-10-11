@@ -99,8 +99,35 @@ Choose for the human input needed now, respecting the user's requested interacti
 - `ramble`: open-ended feedback or hands-on review guided by executable actions.
 - `questions`: explicit answers or decisions. One question with `allowOther:false`
   covers a closed single choice; enable custom answers only when useful.
-- `document_review`: comments and suggested edits tied to paragraphs of an existing
-  script, speech, or draft. Supply the actual source and its version.
+- `brainstorm`: explore ideas with editable cards, groups, and human selections.
+  Supply only `title`, optional `inherit_from_request_id`, and new `groups`/`cards`.
+  Never supply server-resolved `initial_board`, `source_version`, `board_id`, round,
+  or card origin fields. Each round is a new request; read the real published
+  result before choosing the next step. To continue the same board, inherit a
+  completed, published `brainstorm` v1 request in the same session. The server
+  carries forward human edits, added cards, groups, selections, and parked cards.
+  Do not retransmit existing IDs or reconstruct their text from memory. Add only
+  new IDs; derived cards may reference up to 20 of the previous round's selected
+  IDs through `source_card_ids`. Existing cards are parked, not deleted.
+  Read `intent`: `explore` asks for more directions, `expand` develops at least one
+  selected card, `combine` brings together at least two, and `proceed` continues
+  the original task using at least one selected direction. These are submitted
+  instructions, not live AI calls or authority for unrelated actions. Read the
+  full board, `instruction`, feedback body, and attachments; new rounds reset
+  intent and instruction. The task may also use other workbench types between
+  board rounds; automatic board inheritance only accepts the compatible type.
+- `document_review`: review an existing Markdown plan, document, script, or draft.
+  Supply `data: {title, source_version, markdown}` with the full immutable source.
+  Comments can target the whole document or ranges across paragraphs. Returned
+  `start`/`end` are half-open Unicode scalar offsets into the raw Markdown, not
+  rendered text; verify `quote` against that slice. Three null anchor fields mean
+  the whole document. An empty suggestion `replacement` means proposed deletion,
+  never an already-applied edit. Suggestions are not mechanical string patches;
+  preserve surrounding Markdown structure when a quote includes partial formatting.
+  The body string is required in both kinds. A comment needs nonblank body text
+  before submission; a suggestion's reason may be empty, including for deletion.
+  Read the current schema; do not send the former
+  `paragraphs` input or expect `paragraph_marks` in results.
 - `web_review`: hands-on review of a real development page with comments tied to
   selected elements. Supply the page URL, source version, and initial viewport.
   Read `describe_workbench` for setup: the page must allow iframe embedding and

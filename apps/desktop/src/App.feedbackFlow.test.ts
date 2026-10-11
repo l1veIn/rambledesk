@@ -180,11 +180,11 @@ describe('feedback flow through the real App and editor', () => {
     localStorage.setItem('rambledesk.workbench-tour.document_review', JSON.stringify({ version: 1 }))
     const spec: WorkbenchSpec = kind === 'questions'
       ? { type: 'questions', version: 1, data: { questions: [{ id: 'q', prompt: 'Your feedback?', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }], allowOther: true }] } }
-      : { type: 'document_review', version: 1, data: { title: 'Draft', source_version: 'v1', paragraphs: [{ id: 'p', text: 'Original paragraph.' }] } }
+      : { type: 'document_review', version: 1, data: { title: 'Draft', source_version: 'v1', markdown: 'Original paragraph.' } }
     const initial: WorkbenchState = kind === 'questions'
       ? { type: 'questions', answers: [{ id: 'q', value: 'Custom answer', label: 'Custom answer', wasCustom: true }] }
-      : { type: 'document_review', verdict: 'changes_requested', paragraph_marks: [], annotations: [{
-        id: 'note', paragraph_id: 'p', start: null, end: null, quote: null, kind: 'comment', body: 'My comment', replacement: null,
+      : { type: 'document_review', verdict: 'changes_requested', annotations: [{
+        id: 'note', start: null, end: null, quote: null, kind: 'comment', body: 'My comment', replacement: null,
       }] }
     const transport = new FeedbackFlowTransport()
     const call = transport.call.bind(transport)

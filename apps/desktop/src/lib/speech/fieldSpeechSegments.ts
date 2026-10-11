@@ -14,7 +14,7 @@ export type FieldSpeechSegment = {
   text: string
   /** Edited spans remain as retired provenance, even if their text is restored. */
   state: 'pending' | 'cleaned' | 'edited'
-  /** The selected question or original paragraph at capture time. */
+  /** The selected question or immutable document identity at capture time. */
   contract: string
   /** The custom-answer identity or review anchor, excluding mutable text. */
   identity: string

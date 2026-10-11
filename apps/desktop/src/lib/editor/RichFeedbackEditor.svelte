@@ -27,6 +27,7 @@
   } from '../feedbackDraftDocument'
   import { feedbackEditorExtensions } from '../feedbackEditorExtensions'
   import { t } from '../i18n'
+  import { isImeCompositionKey } from '../imeComposition'
   import { locale } from '../preferences'
   import {
     applySpeechCleanupResults,
@@ -42,6 +43,8 @@
   export let disabled = false
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
+  export let onSubmitShortcut: (() => void) | undefined = undefined
+  export let submitShortcutDisabled = false
   export let tidyingSegmentIds: string[] = []
   export let toolbarActions: Snippet | undefined = undefined
 
@@ -69,6 +72,15 @@
     content: document ?? markdown,
     ...(document ? {} : { contentType: 'markdown' as const }),
     editorProps: {
+      handleKeyDown: (view, event) => {
+        if (!onSubmitShortcut || event.key !== 'Enter' || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return false
+        if (event.defaultPrevented || isImeCompositionKey(event) || view.composing) return false
+        // Handle this before the rich-text keymap turns Mod+Enter into a hard break.
+        // A blocked submission must not silently edit the draft either.
+        event.preventDefault()
+        if (!disabled && !submitShortcutDisabled && !event.repeat) onSubmitShortcut()
+        return true
+      },
       handleClick: (view, pos, event) => {
         const target = event.target as HTMLElement | null
         const chip = target?.closest?.('a.attachment-file-chip')

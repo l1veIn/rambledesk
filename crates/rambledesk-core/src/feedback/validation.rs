@@ -53,7 +53,7 @@ pub(super) fn validate_request_input(input: &RequestFeedbackInput) -> Result<(),
                 "Provide workbench.data or legacy actions, not both",
             ));
         }
-        let workbench = crate::validate_workbench(spec)?;
+        let workbench = crate::validate_workbench_request(spec)?;
         if input.allow_finish && !workbench.kind().supports_approval() {
             return Err(ApplicationError::invalid_argument(
                 "allow_finish is only supported by Ramble",

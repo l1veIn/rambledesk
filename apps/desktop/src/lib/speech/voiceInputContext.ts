@@ -37,11 +37,11 @@ export function workbenchFieldVoiceTarget(state: VoiceInputState,
   return document && document.requestId === state.requestId ? workbenchFieldTarget(document, field) : null
 }
 
-export function reviewAnnotationVoiceTarget(state: VoiceInputState, annotationId: string, field: 'body' | 'replacement', sourceVersion: string, paragraphLabel: string): SpeechTarget | null {
+export function reviewAnnotationVoiceTarget(state: VoiceInputState, annotationId: string, field: 'body' | 'replacement', sourceVersion: string, sourceLabel: string): SpeechTarget | null {
   const document = state.documentTarget
   return document && document.requestId === state.requestId ? {
     requestId: document.requestId, requestTitle: document.requestTitle,
-    destination: { kind: 'review_annotation', annotationId, field, sourceVersion, paragraphLabel },
+    destination: { kind: 'review_annotation', annotationId, field, sourceVersion, sourceLabel },
   } : null
 }
 

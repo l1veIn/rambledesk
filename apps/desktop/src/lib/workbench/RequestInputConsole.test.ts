@@ -13,7 +13,7 @@ const documentTarget: SpeechTarget = {
   requestId: 'request-1', requestTitle: 'Script review', destination: { kind: 'document', action: null },
 }
 const comment: SpeechTarget = { ...documentTarget, destination: {
-  kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening',
+  kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening',
 } }
 let view: ReturnType<typeof mount> | undefined
 beforeEach(() => locale.set('en'))

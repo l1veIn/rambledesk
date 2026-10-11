@@ -11,7 +11,7 @@
     requestId: 'preview-feedback', requestTitle: 'Login review',
     destination: { kind: 'document', action: { actionId: 'login', actionIndex: 0, title: 'Check login behavior' } },
   }
-  const otherTarget: SpeechTarget = { requestId: 'preview-feedback', requestTitle: 'Login review', destination: { kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening' } }
+  const otherTarget: SpeechTarget = { requestId: 'preview-feedback', requestTitle: 'Login review', destination: { kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening' } }
   let nextId = 1
   let selectedGroupId: string | null = null
   let phase: VoicePhase = 'listening'

@@ -11,7 +11,7 @@ import type { WebReviewFrameState, WebReviewRect, WebReviewSelection } from './w
 import { emptyWebReviewState, type WebReviewState } from './reviewModel'
 import WebReviewWorkbench from './WebReviewWorkbench.svelte'
 
-type FrameHooks = { url: string; onState: (state: WebReviewFrameState) => void; onSelection: (selection: WebReviewSelection) => void; onAnchor?: (rect: WebReviewRect | null) => void }
+type FrameHooks = { url: string; onState: (state: WebReviewFrameState) => void; onSelection: (selection: WebReviewSelection) => void; onAnchor?: (rect: WebReviewRect | null) => void; onSelectionCancel?: () => void; onFocusMissing?: (reason: 'page_changed' | 'element_missing') => void }
 const bridge = vi.hoisted(() => ({ options: null as FrameHooks | null, mode: vi.fn(), focus: vi.fn(), connect: vi.fn() }))
 vi.mock('./webReviewFrame', () => ({ createWebReviewFrame: (options: FrameHooks) => {
   bridge.options = options
@@ -140,6 +140,95 @@ describe('web review workbench', () => {
     expect([frame.style.width, frame.style.height]).toEqual(frameSize)
     expect(latest.annotations[0].body).toBe('Keep this first observation.')
     expect(latest.annotations[1].element.rect).toEqual(next.rect)
+  })
+  it.each(['host', 'frame'] as const)('returns to browsing on %s Escape while keeping the note and iframe intact', async (source) => {
+    open(); await connect()
+    byLabel<HTMLButtonElement>('Select elements').click()
+    await vi.waitFor(() => expect(bridge.mode).toHaveBeenLastCalledWith('select'))
+    bridge.options!.onSelection(selection)
+    await vi.waitFor(() => expect(byLabel('Your comment')).not.toBeNull())
+    replaceInputText(byLabel('Your comment'), 'Keep this draft after Escape.')
+    await vi.waitFor(() => expect(latest.annotations[0].body).toBe('Keep this draft after Escape.'))
+    const saved = structuredClone(latest)
+    const frame = document.querySelector('iframe')!
+    const controller = bridge.options
+    if (source === 'host') {
+      byLabel('Your comment').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    } else bridge.options!.onSelectionCancel?.()
+    await vi.waitFor(() => expect(bridge.mode).toHaveBeenLastCalledWith('browse'))
+    expect(document.querySelector('[data-web-review-comment-dock]')).toBeNull()
+    expect(byLabel('Browse').getAttribute('aria-pressed')).toBe('true')
+    if (source === 'host') expect(document.activeElement).toBe(byLabel('Browse'))
+    expect(latest).toEqual(saved)
+    expect(document.querySelector('iframe')).toBe(frame)
+    expect(bridge.options).toBe(controller)
+    expect([frame.style.width, frame.style.height]).toEqual(['1440px', '900px'])
+    // A late selection callback cannot create another note after cancellation.
+    bridge.options!.onSelection({ ...selection, selector: '#other' })
+    expect(latest).toEqual(saved)
+    Array.from(document.querySelectorAll('button')).find((item) => item.textContent?.includes('Review comments'))!.click()
+    await vi.waitFor(() => expect(document.querySelector('[data-web-review-note-preview]')).not.toBeNull())
+    document.querySelector<HTMLButtonElement>('[data-web-review-note-preview]')!.click()
+    await vi.waitFor(() => expect(inputText(byLabel('Your comment'))).toBe('Keep this draft after Escape.'))
+    expect(latest).toEqual(saved)
+  })
+  it('ignores host IME, consumed and unrelated Escape, then retains an empty note on cancellation', async () => {
+    open(); await connect()
+    byLabel<HTMLButtonElement>('Select elements').click()
+    await vi.waitFor(() => expect(bridge.mode).toHaveBeenLastCalledWith('select'))
+    bridge.options!.onSelection(selection)
+    await vi.waitFor(() => expect(byLabel('Your comment')).not.toBeNull())
+    const editor = byLabel('Your comment')
+    const composing = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, isComposing: true })
+    editor.dispatchEvent(composing)
+    expect(composing.defaultPrevented).toBe(false)
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, keyCode: 229 }))
+    const consumed = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    consumed.preventDefault()
+    editor.dispatchEvent(consumed)
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await tick()
+    expect(byLabel('Select elements').getAttribute('aria-pressed')).toBe('true')
+    expect(document.querySelector('[data-web-review-comment-dock]')).not.toBeNull()
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    await vi.waitFor(() => expect(document.querySelector('[data-web-review-comment-dock]')).toBeNull())
+    expect(latest.annotations).toHaveLength(1)
+    expect(latest.annotations[0].body).toBe('')
+  })
+  it('clears an old positioning failure when opening another comment or refreshing, while preserving both drafts', async () => {
+    const other = { ...note, id: 'note-2', element: { ...note.element, selector: '#footer', text: 'Footer' }, body: 'Keep the footer.' }
+    const saved = { ...emptyWebReviewState(), annotations: [note, other] }
+    open(saved); await connect()
+    const frame = document.querySelector('iframe')!
+    async function openNote(index: number) {
+      Array.from(document.querySelectorAll('button')).find((item) => item.textContent?.includes('Review comments'))!.click()
+      await vi.waitFor(() => expect(document.querySelectorAll('[data-web-review-note-preview]')).toHaveLength(2))
+      document.querySelectorAll<HTMLButtonElement>('[data-web-review-note-preview]')[index].click()
+      await tick()
+    }
+    const failure = 'The saved element is unavailable. Its captured context is preserved.'
+    await openNote(0)
+    bridge.options!.onFocusMissing?.('element_missing')
+    await vi.waitFor(() => expect(document.body.textContent).toContain(failure))
+    await openNote(1)
+    await vi.waitFor(() => expect(inputText(byLabel('Your comment'))).toBe(other.body))
+    expect(document.body.textContent).not.toContain(failure)
+    bridge.options!.onFocusMissing?.('page_changed')
+    await vi.waitFor(() => expect(document.body.textContent).toContain(failure))
+    const beforeRefresh = bridge.options
+    byLabel<HTMLButtonElement>('Refresh page').click()
+    await vi.waitFor(() => expect(bridge.options).not.toBe(beforeRefresh))
+    expect(document.body.textContent).not.toContain(failure)
+    expect(inputText(byLabel('Your comment'))).toBe(other.body)
+    expect(document.querySelector('iframe')).toBe(frame)
+    // Recovery must not hide a new failure or rewrite the saved capture/body.
+    bridge.options!.onFocusMissing?.('element_missing')
+    await vi.waitFor(() => expect(document.body.textContent).toContain(failure))
+    await openNote(0)
+    await vi.waitFor(() => expect(inputText(byLabel('Your comment'))).toBe(note.body))
+    expect(document.body.textContent).not.toContain(failure)
+    expect(saved.annotations).toEqual([note, other])
+    expect(latest).toEqual(emptyWebReviewState())
   })
   it('keeps an unfinished note removable from the comment list', async () => {
     open({ ...emptyWebReviewState(), annotations: [{ ...note, body: '' }] })

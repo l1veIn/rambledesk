@@ -85,6 +85,21 @@ importers:
       marked:
         specifier: 17.0.6
         version: 17.0.6
+      mdast-util-from-markdown:
+        specifier: 2.0.3
+        version: 2.0.3
+      mdast-util-gfm:
+        specifier: 3.1.0
+        version: 3.1.0
+      micromark:
+        specifier: 4.0.2
+        version: 4.0.2
+      micromark-extension-gfm:
+        specifier: 3.0.0
+        version: 3.0.0
+      micromark-util-decode-string:
+        specifier: 2.0.1
+        version: 2.0.1
       paneforge:
         specifier: 1.0.2
         version: 1.0.2(svelte@5.56.8)

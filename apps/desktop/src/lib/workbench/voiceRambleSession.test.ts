@@ -136,7 +136,7 @@ function lifecycleHarness() {
 describe('voice ramble session', () => {
   it.each(['streaming', 'vad'] as const)('keeps %s partials paired with their pinned target across late stable results', async (mode) => {
     const first: SpeechTarget = { requestId: 'request-1', requestTitle: 'Review', destination: {
-      kind: 'review_annotation', annotationId: 'first', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening',
+      kind: 'review_annotation', annotationId: 'first', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening',
     } }
     const second: SpeechTarget = { ...first, destination: { ...first.destination, annotationId: 'second' } } as SpeechTarget
     let next = first

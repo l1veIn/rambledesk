@@ -29,7 +29,7 @@ export type WorkbenchFieldDestination = {
 export type InputDestination =
   | { kind: 'document'; action: ActiveAction }
   | WorkbenchFieldDestination
-  | { kind: 'review_annotation'; annotationId: string; field: 'body' | 'replacement'; sourceVersion: string; paragraphLabel: string }
+  | { kind: 'review_annotation'; annotationId: string; field: 'body' | 'replacement'; sourceVersion: string; sourceLabel: string }
   | { kind: 'web_review_annotation'; annotationId: string; elementLabel: string }
   | { kind: 'question_answer'; questionId: string; questionLabel: string }
   /** Future targets remain recoverable without accidentally writing to the document. */
@@ -72,7 +72,7 @@ export function normalizeInputTarget(value: unknown): InputTarget | null {
   else if (isWorkbenchFieldDestination(raw)) destination = raw
   else if (record(raw) && raw.kind === 'review_annotation' && typeof raw.annotationId === 'string'
     && (raw.field === 'body' || raw.field === 'replacement') && typeof raw.sourceVersion === 'string'
-    && typeof raw.paragraphLabel === 'string') destination = raw as InputDestination
+    && typeof raw.sourceLabel === 'string') destination = raw as InputDestination
   else if (record(raw) && raw.kind === 'question_answer' && typeof raw.questionId === 'string'
     && typeof raw.questionLabel === 'string') destination = raw as InputDestination
   else if (record(raw) && raw.kind === 'web_review_annotation' && typeof raw.annotationId === 'string'

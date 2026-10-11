@@ -54,6 +54,8 @@
   export let onApprove: () => void = () => {}
 
   let editor: FeedbackEditorPanel
+  $: submitShortcut = !workspace.workbench || workspace.workbench.type === 'ramble'
+  $: submitShortcutDisabled = !canSubmit || locked || cooking || submitting || cancelling || approving || attachmentBusy || feedbackResult !== null
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -116,6 +118,8 @@
     {formatTime}
     {headerActions}
     {onChange}
+    onSubmitShortcut={submitShortcut ? onSubmit : undefined}
+    {submitShortcutDisabled}
     {onRestoreOriginal}
     {onOpenAttachment}
   />
@@ -126,6 +130,7 @@
       cancelled={workspace.request.status === 'cancelled'}
       approved={workspace.request.resolution === 'approved'}
       {canSubmit}
+      {submitShortcut}
       {cooking}
       {cookingEnabled}
       {cookedDraftReady}

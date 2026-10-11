@@ -14,8 +14,8 @@ export type WorkbenchSpec = { type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | TerminalData | RatingReviewData | SortData | VisualFeedbackData | DiffReviewData | TableReviewData | MediaReviewData | Record<string, unknown>;
-export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, } | { "type": "terminal", sessions: Array<TerminalTrialSession>, } | { "type": "rating_review" } & RatingReviewState | { "type": "sort" } & SortState | { "type": "visual_feedback" } & VisualFeedbackState | { "type": "diff_review" } & DiffReviewState | { "type": "table_review" } & TableReviewState | { "type": "media_review" } & MediaReviewState;
+export type WorkbenchData = RambleData | QuestionsData | SingleChoiceData | DocumentReviewData | WebReviewData | TerminalData | RatingReviewData | SortData | VisualFeedbackData | DiffReviewData | TableReviewData | MediaReviewData | BrainstormWireData | Record<string, unknown>;
+export type WorkbenchState = { "type": "questions", answers: Array<QuestionAnswer>, } | { "type": "single_choice", selected_option_id: string | null, } | { "type": "document_review", verdict: ReviewVerdict | null, annotations: Array<ReviewAnnotation>, } | { "type": "web_review", annotations: Array<WebReviewAnnotation>, } | { "type": "terminal", sessions: Array<TerminalTrialSession>, } | { "type": "rating_review" } & RatingReviewState | { "type": "sort" } & SortState | { "type": "visual_feedback" } & VisualFeedbackState | { "type": "diff_review" } & DiffReviewState | { "type": "table_review" } & TableReviewState | { "type": "media_review" } & MediaReviewState | { "type": "brainstorm" } & BrainstormState;
 export type WorkbenchPackage = {
 /**
  * None for cancellation or an unavailable structured document.
@@ -25,7 +25,7 @@ result: WorkbenchResult | null, type: string, version: number,
  * Get this type's data schema with describe_workbench before creating a request.
  */
 data: WorkbenchData, };
-export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | TerminalResult | RatingReviewResult | SortResult | VisualFeedbackResult | DiffReviewResult | TableReviewResult | MediaReviewResult | Record<string, unknown>;
+export type WorkbenchResult = { kind: string, } | { answers: Array<QuestionAnswer>, cancelled: boolean, } | { status: AnswerStatus, selected_option_id: string | null, } | DocumentReviewResult | WebReviewResult | TerminalResult | RatingReviewResult | SortResult | VisualFeedbackResult | DiffReviewResult | TableReviewResult | MediaReviewResult | BrainstormResult | Record<string, unknown>;
 export type RambleData = { actions: Array<ActionInput>, };
 export type QuestionsData = { questions: Array<Question>, };
 export type Question = { id: string, prompt: string, label?: string, options: Array<QuestionOption>, allowOther: boolean, };
@@ -40,25 +40,28 @@ export type ChoiceOption = { id: string, label: string, };
 export type AnswerStatus = "answered" | "unanswered";
 export type DocumentReviewData = { title: string, source_version: string,
 /**
- * Immutable source paragraphs; at most 120000 Unicode scalar values in total.
+ * Immutable raw Markdown; at most 120000 Unicode scalar values. Whitespace,
+ * line endings and Markdown syntax are preserved and count toward offsets.
  */
-paragraphs: Array<ReviewParagraph>, };
-export type ReviewParagraph = { id: string, label?: string, text: string, };
-export type ReviewAnnotation = { id: string, paragraph_id: string,
+markdown: string, };
+export type ReviewAnnotation = { id: string,
 /**
- * Half-open Unicode scalar offsets (not UTF-16). All three anchor fields
- * must be null for a whole-paragraph annotation, or present and exact.
+ * Half-open Unicode scalar offsets into the raw Markdown, not UTF-16 or
+ * rendered text. All three anchor fields must be null for a whole-document
+ * annotation, or present with quote exactly matching the source slice.
  */
-start: number | null, end: number | null, quote: string | null, kind: ReviewAnnotationKind, body: string,
+start: number | null, end: number | null, quote: string | null, kind: ReviewAnnotationKind,
+/**
+ * Nonblank for comments; optional explanation for suggestions (may be empty).
+ */
+body: string,
 /**
  * Required for suggestions, null for comments; empty means proposed deletion.
  */
 replacement: string | null, };
 export type ReviewAnnotationKind = "comment" | "suggestion";
-export type ParagraphMark = { paragraph_id: string, decision: ParagraphDecision, };
-export type ParagraphDecision = "keep" | "revise" | "remove";
 export type ReviewVerdict = "ready" | "changes_requested";
-export type DocumentReviewResult = { source_version: string, verdict: ReviewVerdict, annotations: Array<ReviewAnnotation>, paragraph_marks: Array<ParagraphMark>, };
+export type DocumentReviewResult = { source_version: string, verdict: ReviewVerdict, annotations: Array<ReviewAnnotation>, };
 export type WebReviewData = { title: string, url: string, source_version: string, viewport: WebReviewViewport, };
 export type WebReviewViewport = { width: number, height: number, };
 export type WebReviewRect = { x: number, y: number, width: number, height: number, };
@@ -239,6 +242,18 @@ end_ms: number | null,
 body: string, };
 export type MediaReviewState = { comments: Array<MediaReviewComment>, };
 export type MediaReviewResult = { source_version: string, duration_ms: number, comments: Array<MediaReviewComment>, };
+export type BrainstormRequestData = { title: string, inherit_from_request_id: string | null, groups: Array<BrainstormGroup>, cards: Array<BrainstormProposal>, };
+export type BrainstormProposal = { id: string, title: string, body: string, group_id: string | null, source_card_ids: Array<string>, };
+export type BrainstormWireData = BrainstormRequestData | BrainstormData;
+export type BrainstormData = { title: string, source_version: string, board_id: string, round: number, inherit_from_request_id: string | null, initial_board: BrainstormBoard, };
+export type BrainstormCard = { id: string, title: string, body: string, group_id: string | null, source_card_ids: Array<string>, origin: BrainstormOrigin, origin_request_id: string, parked: boolean, };
+export type BrainstormGroup = { id: string, title: string, };
+export type BrainstormBoard = { cards: Array<BrainstormCard>, groups: Array<BrainstormGroup>, selected_card_ids: Array<string>, phase: BrainstormPhase, };
+export type BrainstormPhase = "diverge" | "organize" | "focus";
+export type BrainstormIntent = "explore" | "expand" | "combine" | "proceed";
+export type BrainstormOrigin = "agent" | "human";
+export type BrainstormState = { cards: Array<BrainstormCard>, groups: Array<BrainstormGroup>, selected_card_ids: Array<string>, phase: BrainstormPhase, intent: BrainstormIntent | null, instruction: string, };
+export type BrainstormResult = { source_version: string, board_id: string, round: number, inherit_from_request_id: string | null, cards: Array<BrainstormCard>, groups: Array<BrainstormGroup>, selected_card_ids: Array<string>, phase: BrainstormPhase, intent: BrainstormIntent, instruction: string, };
 export type TerminalSessionStatus = "running" | "exited" | "stopped";
 export type OpenTerminalSessionInput = { request_id: string, cols: number, rows: number, };
 export type TerminalSessionInput = { request_id: string, session_id: string, };

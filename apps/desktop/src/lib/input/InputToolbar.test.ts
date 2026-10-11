@@ -14,7 +14,7 @@ const documentTarget: SpeechTarget = {
 }
 const commentTarget: SpeechTarget = {
   ...documentTarget,
-  destination: { kind: 'review_annotation', annotationId: 'opening', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening' },
+  destination: { kind: 'review_annotation', annotationId: 'opening', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening' },
 }
 let view: ReturnType<typeof createClassComponent> | undefined
 beforeEach(() => locale.set('en'))

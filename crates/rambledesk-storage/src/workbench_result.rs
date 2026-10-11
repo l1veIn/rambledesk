@@ -78,16 +78,16 @@ mod tests {
     fn spec() -> WorkbenchSpec {
         serde_json::from_value(json!({"type":"document_review","version":1,"data":{
             "title":"Speech", "source_version":"draft-a",
-            "paragraphs":[{"id":"opening","text":"你好😀 world"}]
+            "markdown":"你好😀 **world**\r\n\r\n## Next\n"
         }}))
         .unwrap()
     }
 
     fn state() -> Value {
         json!({"type":"document_review", "verdict":"changes_requested", "annotations":[{
-            "id":"note-1", "paragraph_id":"opening", "start":2,"end":3,"quote":"😀",
+            "id":"note-1", "start":2,"end":3,"quote":"😀",
             "kind":"suggestion", "body":"Remove this emoji", "replacement":""
-        }],"paragraph_marks":[{"paragraph_id":"opening","decision":"revise"}]})
+        }]})
     }
 
     fn result(value: Value) -> Option<WorkbenchResult> {
@@ -113,36 +113,33 @@ mod tests {
     }
 
     #[test]
-    fn legacy_annotation_status_is_ignored_without_losing_review_content() {
-        for status in ["open", "resolved"] {
-            let mut legacy = state();
-            legacy["annotations"][0]["status"] = json!(status);
-            legacy["annotations"][0]["body"] =
-                json!("Remove this emoji [reference](attachment://reference)");
-            let document = json!({
-                "schemaVersion":2,"doc":{"type":"doc","content":[]},
-                "workbenchState":legacy
-            })
-            .to_string();
-            let package = prepare_feedback_submission(Some(&spec()), Some(&document), "")
-                .unwrap()
-                .unwrap();
-            let published = serde_json::to_value(package.result.unwrap()).unwrap();
-            let annotation = &published["annotations"][0];
-            assert_eq!(annotation["id"], "note-1");
-            assert_eq!(annotation["paragraph_id"], "opening");
-            assert_eq!(annotation["quote"], "😀");
-            assert_eq!(annotation["start"], 2);
-            assert_eq!(annotation["end"], 3);
-            assert_eq!(annotation["replacement"], "");
-            assert_eq!(annotation["body"], legacy["annotations"][0]["body"]);
-            assert!(annotation.get("status").is_none());
-            // Old published packages also normalize when opened again.
-            legacy.as_object_mut().unwrap().remove("type");
-            legacy["source_version"] = json!("draft-a");
-            let restored: DocumentReviewResult = serde_json::from_value(legacy).unwrap();
-            assert_eq!(serde_json::to_value(restored).unwrap(), published);
-        }
+    fn document_review_package_roundtrips_without_losing_review_content() {
+        let mut draft_state = state();
+        draft_state["annotations"][0]["body"] =
+            json!("Remove this emoji [reference](attachment://reference)");
+        let document = json!({
+            "schemaVersion":2,"doc":{"type":"doc","content":[]},
+            "workbenchState":draft_state
+        })
+        .to_string();
+        let package = prepare_feedback_submission(Some(&spec()), Some(&document), "")
+            .unwrap()
+            .unwrap();
+        let published = serde_json::to_value(package.result.unwrap()).unwrap();
+        let annotation = &published["annotations"][0];
+        assert_eq!(annotation["id"], "note-1");
+        assert!(annotation.get("paragraph_id").is_none());
+        assert_eq!(annotation["quote"], "😀");
+        assert_eq!(annotation["start"], 2);
+        assert_eq!(annotation["end"], 3);
+        assert_eq!(annotation["replacement"], "");
+        assert_eq!(annotation["body"], draft_state["annotations"][0]["body"]);
+        assert!(annotation.get("status").is_none());
+        assert!(published.get("paragraph_marks").is_none());
+        draft_state.as_object_mut().unwrap().remove("type");
+        draft_state["source_version"] = json!("draft-a");
+        let restored: DocumentReviewResult = serde_json::from_value(draft_state).unwrap();
+        assert_eq!(serde_json::to_value(restored).unwrap(), published);
     }
 
     #[test]
@@ -154,9 +151,11 @@ mod tests {
 
     #[test]
     fn document_review_still_rejects_unknown_annotation_fields() {
-        let mut invalid = state();
-        invalid["annotations"][0]["future_field"] = json!("not understood");
-        assert!(serde_json::from_value::<WorkbenchState>(invalid).is_err());
+        for field in ["future_field", "paragraph_id", "status"] {
+            let mut invalid = state();
+            invalid["annotations"][0][field] = json!("not understood");
+            assert!(serde_json::from_value::<WorkbenchState>(invalid).is_err());
+        }
     }
 
     #[test]
@@ -172,7 +171,7 @@ mod tests {
         }
         let document =
             json!({"schemaVersion":2,"doc":{"type":"doc","content":[]},"workbenchState":{
-                "type":"document_review","verdict":"ready","annotations":[],"paragraph_marks":[]
+                "type":"document_review","verdict":"ready","annotations":[]
             }})
             .to_string();
         assert!(prepare_feedback_submission(Some(&spec()), Some(&document), "").is_ok());

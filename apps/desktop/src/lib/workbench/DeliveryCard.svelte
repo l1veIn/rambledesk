@@ -23,6 +23,7 @@
   export let cancelled = false
   export let approved = false
   export let canSubmit = false
+  export let submitShortcut = false
   export let cooking = false
   export let cookingEnabled = false
   export let cookedDraftReady = false
@@ -46,6 +47,9 @@
 
   $: published = feedbackResult !== null && !submitting && !cooking && !cancelled
   $: operationLocked = cooking || submitting || cancelling || approving
+  $: submitShortcutTitle = submitShortcut && !cookedDraftReady
+    ? `${t($locale, cookingEnabled ? 'Cook and submit' : 'Submit feedback')} · Ctrl/⌘+Enter`
+    : undefined
 
   function tr(source: string, values: Record<string, string | number> = {}) {
     return t($locale, source, values)
@@ -130,7 +134,7 @@
                 : tr('Cook')}
       </Button>
       {#if !cookedDraftReady}
-        <Button size="sm" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
+        <Button size="sm" disabled={operationLocked || !canSubmit} title={submitShortcutTitle} onclick={onSubmit}>
           <Send data-icon="inline-start" />
           {submitStage === 'saving'
             ? tr('Saving…')
@@ -142,7 +146,7 @@
         </Button>
       {/if}
     {:else}
-      <Button size="sm" disabled={operationLocked || !canSubmit} onclick={onSubmit}>
+      <Button size="sm" disabled={operationLocked || !canSubmit} title={submitShortcutTitle} onclick={onSubmit}>
         <Send data-icon="inline-start" />
         {submitStage === 'saving' ? tr('Saving…') : submitting ? tr('Publishing…') : tr('Submit feedback')}
       </Button>

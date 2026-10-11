@@ -175,6 +175,8 @@ fn request_input(request_id: &str) -> Value {
     json!({"request_id":request_id,"what_happened":"Please review this fixture", "actions":[{"id":"review","instruction":"Review the fixture"}]})
 }
 
+#[path = "managed_feedback/brainstorm.rs"]
+mod brainstorm;
 #[path = "managed_feedback/workbenches.rs"]
 mod workbenches;
 

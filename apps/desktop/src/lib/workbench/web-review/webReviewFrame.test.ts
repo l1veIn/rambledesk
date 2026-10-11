@@ -17,14 +17,15 @@ function harness() {
   const onAnchor = vi.fn()
   const onAnnotationClick = vi.fn()
   const onFocusMissing = vi.fn()
-  const controller = createWebReviewFrame({ iframe, url: page.page_url, onState, onSelection, onAnchor, onAnnotationClick, onFocusMissing })
+  const onSelectionCancel = vi.fn()
+  const controller = createWebReviewFrame({ iframe, url: page.page_url, onState, onSelection, onAnchor, onAnnotationClick, onFocusMissing, onSelectionCancel })
   cleanups.push(controller.dispose)
   controller.connect()
   const channel = post.mock.calls.find(([message]) => message.type === 'init')![0].channel
   const message = (type: string, payload: Record<string, unknown> = {}, override: Partial<MessageEventInit> = {}) => window.dispatchEvent(new MessageEvent('message', {
     source: iframe.contentWindow, origin: 'https://review.example', data: { protocol: WEB_REVIEW_PROTOCOL, channel, type, ...payload }, ...override,
   }))
-  return { controller, post, onState, onSelection, onAnchor, onAnnotationClick, onFocusMissing, message, channel }
+  return { controller, post, onState, onSelection, onAnchor, onAnnotationClick, onFocusMissing, onSelectionCancel, message, channel }
 }
 
 describe('web review frame boundary', () => {
@@ -83,6 +84,35 @@ describe('web review frame boundary', () => {
     h.controller.dispose()
     h.message('selection', { selection })
     expect(h.onSelection).not.toHaveBeenCalled()
+  })
+
+  it('accepts cancellation only from the connected current frame while selecting', () => {
+    const h = harness()
+    h.controller.setMode('select')
+    h.message('selection_cancelled')
+    expect(h.onSelectionCancel).not.toHaveBeenCalled()
+    h.message('ready', page)
+    h.message('selection_cancelled', {}, { origin: 'https://attacker.example' })
+    h.message('selection_cancelled', {}, { source: window })
+    h.message('selection_cancelled', { channel: 'old-channel' })
+    h.message('selection_cancelled', { protocol: 'other-protocol' })
+    expect(h.onSelectionCancel).not.toHaveBeenCalled()
+    h.message('selection_cancelled')
+    expect(h.onSelectionCancel).toHaveBeenCalledTimes(1)
+    expect(h.onAnchor).toHaveBeenLastCalledWith(null)
+    h.message('selection_cancelled')
+    expect(h.onSelectionCancel).toHaveBeenCalledTimes(1)
+    h.message('ready', page)
+    expect(h.post.mock.calls.map(([data]) => data)).toContainEqual(expect.objectContaining({ type: 'mode', mode: 'browse' }))
+  })
+
+  it('does not replay queued selection focus when the host returns to browsing before connection', () => {
+    const h = harness()
+    h.controller.setMode('select')
+    h.controller.focus({ selector: '#signup', page_url: page.page_url })
+    h.controller.setMode('browse')
+    h.message('ready', page)
+    expect(h.post.mock.calls.some(([data]) => data.type === 'focus')).toBe(false)
   })
 
   it('rejects unsafe review URLs before messaging any frame', () => {

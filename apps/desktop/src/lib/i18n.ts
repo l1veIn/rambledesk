@@ -50,7 +50,7 @@ const chinese: Record<string, string> = {
   'Speech contains no valid text.': '转写内容中没有可用文字。',
   'This workbench is not supported. The draft is read-only.': '当前客户端不支持此工作台，草稿为只读状态。',
   'This speech destination is not supported. Your words have been preserved.': '当前客户端不支持此语音目标。转写内容已保留。',
-  'The speech target is not an available document review.': '语音目标对应的文稿审阅不可用。',
+  'The speech target is not an available document review.': '语音目标对应的文档审阅不可用。',
   'The original document version has changed. Your words have been preserved.': '原稿版本已变化。转写内容已保留。',
   'The review draft is unavailable. Your words have been preserved.': '审阅草稿不可用。转写内容已保留。',
   'The target comment no longer exists or has an ambiguous id. Your words have been preserved.': '目标批注已不存在，或无法唯一识别。转写内容已保留。',

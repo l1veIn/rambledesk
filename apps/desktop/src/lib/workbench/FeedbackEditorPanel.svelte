@@ -49,6 +49,8 @@
   export let uncookedMarkdown = ''
   export let formatTime: (value: string | null | undefined) => string
   export let onChange: (snapshot: FeedbackDraftSnapshot) => void = () => {}
+  export let onSubmitShortcut: (() => void) | undefined = undefined
+  export let submitShortcutDisabled = false
   export let onRestoreOriginal: () => void = () => {}
   export let onOpenAttachment: (attachmentId: string) => void = () => {}
   export let headerActions: Snippet | undefined = undefined
@@ -202,6 +204,8 @@
         markdown={draftBody}
         previews={attachmentPreviews}
         disabled={editingDisabled}
+        {onSubmitShortcut}
+        {submitShortcutDisabled}
         {onOpenAttachment}
         onChange={(snapshot) => {
           if (!editingDisabled) onChange(snapshot)

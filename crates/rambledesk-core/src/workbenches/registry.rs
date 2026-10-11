@@ -19,9 +19,9 @@ register_workbenches! {
     }
     DocumentReview => document_review {
         wire: "document_review", data: DocumentReviewData,
-        state: [DocumentReview { verdict: Option<ReviewVerdict>, annotations: Vec<ReviewAnnotation>, paragraph_marks: Vec<ParagraphMark> },],
+        state: [DocumentReview { verdict: Option<ReviewVerdict>, annotations: Vec<ReviewAnnotation> },],
         result: (DocumentReviewResult),
-        exports: [DocumentReviewData, ReviewParagraph, ReviewAnnotation, ReviewAnnotationKind, ParagraphMark, ParagraphDecision, ReviewVerdict, DocumentReviewResult]
+        exports: [DocumentReviewData, ReviewAnnotation, ReviewAnnotationKind, ReviewVerdict, DocumentReviewResult]
     }
     WebReview => web_review {
         wire: "web_review", data: WebReviewData,
@@ -78,5 +78,11 @@ register_workbenches! {
         state: [MediaReview(MediaReviewState),],
         result: (MediaReviewResult),
         exports: [MediaReviewKind, MediaReviewData, MediaReviewComment, MediaReviewState, MediaReviewResult]
+    }
+    Brainstorm => brainstorm {
+        wire: "brainstorm", data: BrainstormWireData,
+        state: [Brainstorm(BrainstormState),],
+        result: (BrainstormResult),
+        exports: [BrainstormRequestData, BrainstormProposal, BrainstormWireData, BrainstormData, BrainstormCard, BrainstormGroup, BrainstormBoard, BrainstormPhase, BrainstormIntent, BrainstormOrigin, BrainstormState, BrainstormResult]
     }
 }

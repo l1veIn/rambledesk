@@ -20,6 +20,9 @@ use serde::{Deserialize, Serialize};
 pub use state::*;
 use ts_rs::TS;
 include!("workbenches/registry.rs");
+pub use brainstorm::{
+    initial_brainstorm_state, resolve_brainstorm_request, validate_brainstorm_request,
+};
 pub use media_review::validate_media_review_material;
 pub use visual_feedback::{validate_visual_feedback_material, visual_feedback_image_dimensions};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema, TS)]
@@ -86,6 +89,22 @@ impl JsonSchema for WorkbenchData {
 /// projection requires an explicit identity migration, even if the UI changes.
 pub fn workbench_actions(spec: &WorkbenchSpec) -> Result<Vec<ActionInput>, ApplicationError> {
     Ok(validate_workbench(spec)?.legacy_capture_actions())
+}
+
+/// Agent input must not impersonate an application-resolved inherited board.
+pub fn validate_workbench_request(
+    spec: &WorkbenchSpec,
+) -> Result<ValidatedWorkbench<'_>, ApplicationError> {
+    let validated = validate_workbench(spec)?;
+    if matches!(
+        &spec.data,
+        WorkbenchData::Brainstorm(BrainstormWireData::Resolved(_))
+    ) {
+        return Err(ApplicationError::invalid_argument(
+            "brainstorm requests must use the Agent input schema; inherited boards are resolved by the application",
+        ));
+    }
+    Ok(validated)
 }
 
 fn opaque_workbench_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {

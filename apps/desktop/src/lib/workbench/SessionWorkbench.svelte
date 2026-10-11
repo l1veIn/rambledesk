@@ -195,6 +195,7 @@
   <WorkbenchContainer
     bind:this={container}
     {reviewMode}
+    feedbackPlacement={definition?.layout.feedbackPlacement ?? 'column'}
     interactivePreview={definition?.layout.interactivePreview ?? false}
     {onReturnToWorkbench}
     {workspace}
@@ -249,6 +250,7 @@
         <RegisteredWorkbench
           {workspace}
           onOpenReview={!reviewMode && !unsupported && definition?.layout.expanded ? onOpenReview : undefined}
+          onOpenFeedback={reviewMode || definition?.layout.feedbackPlacement === 'drawer' ? () => void container.openFeedback() : undefined}
           onQuote={quoteOutput}
           controller={controller ?? localController}
           {transport}

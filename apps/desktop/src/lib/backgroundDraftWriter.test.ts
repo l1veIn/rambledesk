@@ -37,16 +37,16 @@ const empty = snapshotFeedbackDraftDocument({ type: 'doc', content: [] })
 
 function reviewWorkspace(body = 'Existing'): FeedbackWorkspaceView {
   const value = workspace({ document_json: empty.documentJson, body_markdown: '', saved_revision: 1, updated_at: '' })
-  value.workbench = { type: 'document_review', version: 1, data: { title: 'Script', source_version: 'v1', paragraphs: [{ id: 'p', text: 'Immutable source' }] } }
+  value.workbench = { type: 'document_review', version: 1, data: { title: 'Script', source_version: 'v1', markdown: 'Immutable source' } }
   value.draft.document_json = JSON.stringify({ ...JSON.parse(empty.documentJson),
-    workbenchState: { type: 'document_review', verdict: null, paragraph_marks: [], annotations: [
-      { id: 'a', paragraph_id: 'p', start: null, end: null, quote: null, kind: 'comment', body, replacement: null },
+    workbenchState: { type: 'document_review', verdict: null, annotations: [
+      { id: 'a', start: null, end: null, quote: null, kind: 'comment', body, replacement: null },
     ] },
   })
   return value
 }
 const reviewSpeech: SpeechWriteInput = { requestId: 'request-a', requestTitle: 'Title', id: 'speech-1', text: 'Spoken comment', destination: {
-  kind: 'review_annotation', annotationId: 'a', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening',
+  kind: 'review_annotation', annotationId: 'a', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening',
 } }
 
 describe('background annotation speech writer', () => {

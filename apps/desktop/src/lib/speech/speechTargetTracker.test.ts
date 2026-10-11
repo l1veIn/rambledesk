@@ -18,7 +18,7 @@ describe('speech destination tracking', () => {
   const a: SpeechTarget = { requestId: 'a', requestTitle: 'A', destination: { kind: 'document', action: { actionId: 'first', actionIndex: 0, title: 'First action' } } }
   const b: SpeechTarget = { ...a, destination: { kind: 'document', action: { actionId: 'second', actionIndex: 1, title: 'Second action' } } }
   it('shows the pinned annotation until processing, independently of the next chosen field', () => {
-    let target: SpeechTarget = { ...a, destination: { kind: 'review_annotation', annotationId: 'comment', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening' } }
+    let target: SpeechTarget = { ...a, destination: { kind: 'review_annotation', annotationId: 'comment', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening' } }
     const pinned = structuredClone(target)
     const tracker = createSpeechTargetTracker(() => target)
     tracker.observe({ type: 'speech-started', sessionId: 's', segmentIndex: 0 })

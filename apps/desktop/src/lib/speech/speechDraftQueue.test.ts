@@ -65,7 +65,7 @@ describe('speech draft queue', () => {
   it('pins annotations and keeps fields, source versions and document destinations in separate groups', async () => {
     const write = vi.fn(async () => {})
     const queue = createSpeechDraftQueue({ writeSpeech: write })
-    const body: SpeechTarget = { ...target, destination: { kind: 'review_annotation', annotationId: 'comment-a', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening' } }
+    const body: SpeechTarget = { ...target, destination: { kind: 'review_annotation', annotationId: 'comment-a', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening' } }
     queue.enqueue('one', 'Body words', body, true)
     if (body.destination.kind !== 'review_annotation') throw new Error('fixture')
     body.destination.field = 'replacement'

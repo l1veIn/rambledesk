@@ -10,21 +10,21 @@ import { applyFieldSpeechCleanup, collectFieldSpeechSegments, fieldSpeechSegment
 
 function fixture(type: 'questions' | 'document_review' = 'questions'): SpeechWriteWorkspace {
   const snapshot = snapshotFeedbackDraftDocument({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Keep notes' }] }] })
-  const annotation: ReviewAnnotation = { id: 'a', paragraph_id: 'p', start: 1, end: 2, quote: '😀',
+  const annotation: ReviewAnnotation = { id: 'a', start: 1, end: 2, quote: '😀',
     kind: 'suggestion', body: 'Typed comment', replacement: 'Typed wording' }
   return { request: { request_id: 'r', status: 'in_progress' },
     workbench: type === 'questions' ? { type, version: 1, data: { questions: ['q1', 'q2'].map((id) => ({ id,
       prompt: id, allowOther: true, options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] })) } }
-      : { type, version: 1, data: { title: 'Script', source_version: 'v1', paragraphs: [{ id: 'p', text: 'A😀B' }] } },
+      : { type, version: 1, data: { title: 'Script', source_version: 'v1', markdown: 'A😀B' } },
     draft: { document_json: JSON.stringify({ ...JSON.parse(snapshot.documentJson), opaque: { keep: ['nested'] },
       workbenchState: type === 'questions' ? { type, answers: ['q1', 'q2'].map((id) => ({ id, value: 'Typed😀', label: 'Typed😀', wasCustom: true })) }
-        : { type, annotations: [annotation], paragraph_marks: [], verdict: null } }), body_markdown: snapshot.bodyMarkdown },
+        : { type, annotations: [annotation], verdict: null } }), body_markdown: snapshot.bodyMarkdown },
   }
 }
 const question = (questionId = 'q1'): SpeechTarget => ({ requestId: 'r', requestTitle: 'Questions',
   destination: { kind: 'question_answer', questionId, questionLabel: questionId } })
 const review = (field: 'body' | 'replacement'): SpeechTarget => ({ requestId: 'r', requestTitle: 'Review',
-  destination: { kind: 'review_annotation', annotationId: 'a', field, sourceVersion: 'v1', paragraphLabel: 'Opening' } })
+  destination: { kind: 'review_annotation', annotationId: 'a', field, sourceVersion: 'v1', sourceLabel: 'Opening' } })
 const snapshotOf = (w: SpeechWriteWorkspace): FeedbackDraftSnapshot => ({ documentJson: w.draft.document_json!, bodyMarkdown: w.draft.body_markdown })
 const adopt = (w: SpeechWriteWorkspace, s: FeedbackDraftSnapshot) => { w.draft = { document_json: s.documentJson, body_markdown: s.bodyMarkdown } }
 const envelope = (w: SpeechWriteWorkspace) => JSON.parse(w.draft.document_json!)
@@ -99,7 +99,7 @@ describe('structured field speech provenance', () => {
     expect(result.applied).toEqual(['body', 'wording'])
     expect(after.workbenchState.annotations[0]).toEqual({ ...before.workbenchState.annotations[0],
       body: 'Typed comment\nClean body', replacement: 'Typed wording\nClean wording' })
-    expect(after.workbenchState.paragraph_marks).toEqual(before.workbenchState.paragraph_marks)
+    expect(after.workbenchState.annotations[0].quote).toEqual(before.workbenchState.annotations[0].quote)
     expect(after.speechWriteback).toEqual(before.speechWriteback)
   })
 
@@ -256,19 +256,18 @@ describe('structured field speech provenance', () => {
     expect(collectFieldSpeechSegments(w)).toEqual([])
   })
 
-  it('guards unanchored comments against same-version source edits without storing unrelated paragraphs', () => {
+  it('guards whole-document comments against same-version edits using a compact source digest', () => {
     const w = fixture('document_review')
     const data = w.workbench!.data as DocumentReviewData
-    data.paragraphs.push({ id: 'other', text: 'Unrelated large original document section' })
+    data.markdown += '\n\nAnother original document section'
     edit(w, (e) => Object.assign(e.workbenchState.annotations[0], { start: null, end: null, quote: null }))
-    speech(w, 's1', 'Whole paragraph comment', review('body'))
+    speech(w, 's1', 'Whole document comment', review('body'))
     const wanted = replacements(w)
     const contract = collectFieldSpeechSegments(w)[0].contract
-    expect(contract).toContain('A😀B')
-    expect(contract).not.toContain(data.paragraphs[1].text)
-    data.paragraphs[1].text = 'An unrelated paragraph changed'
-    expect(collectFieldSpeechSegments(w)).toHaveLength(1)
-    data.paragraphs[0].text = 'Same version, changed original paragraph'
+    expect(contract).toContain('sourceSha256')
+    expect(contract).not.toContain(data.markdown)
+    expect(contract.length).toBeLessThan(200)
+    data.markdown = 'Same version, changed original document'
     expect(collectFieldSpeechSegments(w)).toHaveLength(0)
     expect(applyFieldSpeechCleanup(w, wanted).skipped).toEqual(['s1'])
   })

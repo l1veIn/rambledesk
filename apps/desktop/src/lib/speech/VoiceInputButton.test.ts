@@ -31,7 +31,7 @@ describe('shared voice input button', () => {
 
   it('switches the next target without toggling off a recording in another input and respects live locks', async () => {
     const state = writable<VoiceInputState>({ requestId: target.requestId, documentTarget: target,
-      nextTarget: { ...target, destination: { kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening' } }, recording: true, disabled: false })
+      nextTarget: { ...target, destination: { kind: 'review_annotation', annotationId: 'note-1', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening' } }, recording: true, disabled: false })
     const start = vi.fn(), stop = vi.fn()
     view = mount(VoiceInputButton, { target: document.body, context: new Map([[VOICE_INPUT_CONTEXT, { state, start, stop, selectTarget: vi.fn() }]]), props: { target } })
     const button = document.querySelector('button')!

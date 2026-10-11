@@ -68,7 +68,7 @@ impl SqliteFeedbackStore {
 
     pub(super) async fn create_or_get_request_impl(
         &self,
-        request: NewFeedbackRequest,
+        mut request: NewFeedbackRequest,
     ) -> Result<rambledesk_core::MutationOutcome<StoredFeedbackRequest>, RepositoryError> {
         let mut transaction = self
             .pool
@@ -88,6 +88,21 @@ impl SqliteFeedbackStore {
         }
 
         let input_hash = immutable_input_hash(&request)?;
+
+        // Hash and compare the original Agent wire before resolving a published parent.
+        // A same-ID retry must never reseed a board or erase subsequent human edits.
+        let brainstorm = self
+            .resolve_brainstorm_input(&mut transaction, &request)
+            .await?;
+        if let Some(data) = &brainstorm {
+            request
+                .workbench
+                .as_mut()
+                .ok_or(RepositoryError::CorruptData)?
+                .data = rambledesk_core::WorkbenchData::Brainstorm(
+                rambledesk_core::BrainstormWireData::Resolved(data.clone()),
+            );
+        }
 
         sqlx::query(
             "INSERT INTO host_sessions \
@@ -192,6 +207,21 @@ impl SqliteFeedbackStore {
             }
         }
 
+        let copied = if let Some(data) = brainstorm {
+            match self
+                .seed_brainstorm_draft(&mut transaction, &mut request, data)
+                .await
+            {
+                Ok(paths) => paths,
+                Err(error) => {
+                    self.cleanup_staged_request_attachments(&staged).await;
+                    return Err(error);
+                }
+            }
+        } else {
+            vec![]
+        };
+
         let stored = StoredFeedbackRequest {
             request_id: request.request_id,
             managed_session_id: request.managed_session_id,
@@ -207,6 +237,9 @@ impl SqliteFeedbackStore {
         };
         if let Err(error) = transaction.commit().await {
             self.cleanup_staged_request_attachments(&staged).await;
+            for path in &copied {
+                let _ = tokio::fs::remove_file(path).await;
+            }
             return Err(storage_error(error));
         }
         Ok(rambledesk_core::MutationOutcome::changed(stored))

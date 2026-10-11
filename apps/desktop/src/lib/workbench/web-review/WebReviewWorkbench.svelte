@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { Globe, MousePointer2, Hand, RotateCw, Monitor, Smartphone, MessageSquare, ExternalLink, Maximize2 } from '@lucide/svelte'
   import type { WebReviewAnnotation, WebReviewData } from '../../generated/feedback'
   import { locale } from '../../preferences'
@@ -25,6 +25,8 @@
   let selectedId: string | null = null
   let commentsOpen = false
   let selectionMessage = ''
+  let root: HTMLElement
+  let browseButton: HTMLButtonElement
   let focusTarget: { selector: string; page_url: string; sequence: number } | null = null
   let focusSequence = 0
   let selectedComment: WebReviewCommentCard | undefined
@@ -55,6 +57,7 @@
     selectedComment?.focusComment()
   }
   async function openComment(annotation: WebReviewAnnotation, focus = true) {
+    selectionMessage = ''
     selectedId = annotation.id
     commentsOpen = false
     if (!readOnly) {
@@ -82,10 +85,29 @@
     selectedId = null
   }
   function refreshPage() {
+    selectionMessage = ''
     pageUrl = frameState.page_url
     refreshKey += 1
     frameState = { ...frameState, status: 'loading' }
   }
+  function cancelSelection() {
+    if (disabled || readOnly || mode !== 'select') return
+    mode = 'browse'
+    selectedId = null
+    focusTarget = null
+    selectionMessage = ''
+  }
+  onMount(() => {
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229 || event.defaultPrevented
+        || disabled || readOnly || mode !== 'select' || !(event.target instanceof Node) || !root.contains(event.target)) return
+      event.preventDefault()
+      cancelSelection()
+      browseButton.focus({ preventScroll: true })
+    }
+    window.addEventListener('keydown', onKeydown)
+    return () => window.removeEventListener('keydown', onKeydown)
+  })
   async function revealVoiceTarget(sequence: number | undefined, target: SpeechTarget | null | undefined, review: WebReviewState) {
     if (sequence === undefined || sequence === revealedSequence || target?.requestId !== $voiceState.requestId || target?.destination.kind !== 'web_review_annotation') return
     const destination = target.destination
@@ -96,7 +118,7 @@
   }
 </script>
 
-<section class="web-review flex min-h-0 min-w-0 flex-col gap-3" class:web-review-readonly={readOnly} aria-label={tr('Web review')}>
+<section bind:this={root} class="web-review flex min-h-0 min-w-0 flex-col gap-3" class:web-review-readonly={readOnly} aria-label={tr('Web review')}>
   <header class="flex flex-wrap items-center gap-3">
     <Globe class="size-5 shrink-0 text-primary" />
     <div class="min-w-0 flex-1"><h2 class="m-0 truncate text-base font-semibold">{data.title}</h2><p class="m-0 mt-1 truncate text-xs text-muted-foreground" title={data.url}>{data.url} · {data.source_version}</p></div>
@@ -114,7 +136,7 @@
     <div class="flex flex-wrap items-center gap-2" aria-label={tr('Web review')} data-web-review-toolbar>
       <div class="inline-flex items-center gap-2">
       <div class="inline-flex overflow-hidden rounded-lg border">
-        <button type="button" aria-label={tr('Browse')} aria-pressed={mode === 'browse'} {disabled} onclick={() => mode = 'browse'} class="inline-flex items-center gap-1.5 px-3 py-2 text-xs aria-pressed:bg-primary/10 aria-pressed:text-primary disabled:opacity-40"><Hand class="size-3.5" />{tr('Browse')}</button>
+        <button bind:this={browseButton} type="button" aria-label={tr('Browse')} aria-pressed={mode === 'browse'} {disabled} onclick={() => mode = 'browse'} class="inline-flex items-center gap-1.5 px-3 py-2 text-xs aria-pressed:bg-primary/10 aria-pressed:text-primary disabled:opacity-40"><Hand class="size-3.5" />{tr('Browse')}</button>
         <button type="button" aria-label={tr('Select elements')} aria-pressed={mode === 'select'} disabled={disabled || !connected} onclick={() => mode = 'select'} class="inline-flex items-center gap-1.5 border-l px-3 py-2 text-xs aria-pressed:bg-primary/10 aria-pressed:text-primary disabled:opacity-40"><MousePointer2 class="size-3.5" />{tr('Select elements')}</button>
       </div>
       {#if onOpenReview}
@@ -133,6 +155,7 @@
     <div class="web-review-stage relative min-h-0 min-w-0">
       <WebReviewSurface url={pageUrl} {viewport} mode={disabled ? 'browse' : mode} annotations={current.annotations} {selectedId} {focusTarget} {refreshKey}
         onSelect={(selection) => void selectElement(selection)}
+        onSelectionCancel={cancelSelection}
         onStatus={(status) => frameState = status}
         onFocusMissing={() => selectionMessage = tr('The saved element is unavailable. Its captured context is preserved.')}
         onAnnotationClick={(id) => { const annotation = current.annotations.find((item) => item.id === id); if (annotation) void openComment(annotation) }} />

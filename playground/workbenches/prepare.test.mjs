@@ -113,7 +113,7 @@ test('repository fixtures prepare explicit attachment names and the exact image 
   for (const directory of ['fixtures', 'materials']) cpSync(join(source, directory), join(base, directory), { recursive: true })
   const loaded = loadCases(base, true)
   for (const file of ['07-visual-feedback.json', '08-visual-image.json', '09-diff-review.json', '10-table-review.json',
-    '11-media-audio.json', '12-media-video.json', 'sort.json', 'development-rating_review.json']) {
+    '11-media-audio.json', '12-media-video.json', '13-sort.json', '14-brainstorm.json', 'development-rating_review.json']) {
     assert.ok(loaded.some((item) => item.file === file), `${file} is included in the contract regression`)
   }
   const run = prepare({ base, command: 'new', development: true })

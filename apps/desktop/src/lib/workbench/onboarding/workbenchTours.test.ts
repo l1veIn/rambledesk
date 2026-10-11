@@ -29,8 +29,9 @@ describe('workbench guides', () => {
   })
 
   it.each([
-    ['ramble', 1], ['document_review', 1], ['web_review', 1], ['terminal', 1],
+    ['ramble', 1], ['document_review', 2], ['web_review', 1], ['terminal', 1],
     ['visual_feedback', 1], ['diff_review', 2], ['table_review', 1], ['media_review', 1],
+    ['brainstorm', 1],
   ] as const)('keeps %s step identity stable across locale changes', (type, version) => {
     const definition = getWorkbenchDefinition(type)!
     const chinese = getWorkbenchTour(definition, 'zh-CN')!

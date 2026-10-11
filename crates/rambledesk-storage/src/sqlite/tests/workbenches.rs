@@ -6,6 +6,7 @@ use rambledesk_core::{
 use serde_json::{Value, json};
 
 mod attachments;
+mod brainstorm;
 #[cfg(feature = "workbench-fixtures")]
 mod rating_review;
 mod table_media;
@@ -65,6 +66,7 @@ fn discovery_is_paged_and_request_schema_does_not_embed_each_type() {
         "diff_review",
         "table_review",
         "media_review",
+        "brainstorm",
     ]);
     assert_eq!(
         catalog
@@ -520,7 +522,7 @@ async fn document_review_roundtrips_restarts_and_publishes_immutable_anchors() {
     let mut input = workspace.request(Uuid::now_v7().to_string());
     input.actions.clear();
     input.workbench = Some(serde_json::from_value(json!({"type":"document_review","version":1,"data":{
-        "title":"Speech", "source_version":"draft-1", "paragraphs":[{"id":"opening","text":"你好😀 world"}]
+        "title":"Markdown guide", "source_version":"draft-1", "markdown":"你好😀 **world**\r\n\r\n## Next\n"
     }})).unwrap());
     let mut approval = input.clone();
     approval.allow_finish = true;
@@ -541,16 +543,19 @@ async fn document_review_roundtrips_restarts_and_publishes_immutable_anchors() {
     let WorkbenchData::DocumentReview(data) = &mut changed.workbench.as_mut().unwrap().data else {
         unreachable!()
     };
-    data.paragraphs[0].text.push('!');
+    data.markdown.push('!');
     assert_eq!(
         app.request_feedback(changed).await.unwrap_err().code(),
         "REQUEST_CONFLICT"
     );
     let document = json!({"schemaVersion":2,"doc":{"type":"doc","content":[]},"workbenchState":{
         "type":"document_review","verdict":"changes_requested","annotations":[{
-            "id":"note-1","paragraph_id":"opening","start":2,"end":3,"quote":"😀",
-            "kind":"suggestion","body":"Remove emoji","replacement":"","status":"open"
-        }],"paragraph_marks":[{"paragraph_id":"opening","decision":"revise"}]
+            "id":"note-1","start":2,"end":3,"quote":"😀",
+            "kind":"suggestion","body":"","replacement":""
+        },{
+            "id":"note-2","start":2,"end":3,"quote":"😀",
+            "kind":"suggestion","body":" \r\n\t ","replacement":"✨"
+        }]
     }})
     .to_string();
     let saved = app
@@ -606,10 +611,18 @@ async fn document_review_roundtrips_restarts_and_publishes_immutable_anchors() {
         .unwrap();
     assert!(package.markdown.trim().is_empty());
     let workbench = serde_json::to_value(package.manifest.workbench.unwrap()).unwrap();
-    assert_eq!(workbench["data"]["paragraphs"][0]["text"], "你好😀 world");
+    assert_eq!(
+        workbench["data"]["markdown"],
+        "你好😀 **world**\r\n\r\n## Next\n"
+    );
+    assert!(workbench["data"].get("paragraphs").is_none());
+    assert!(workbench["result"].get("paragraph_marks").is_none());
     assert_eq!(workbench["result"]["source_version"], "draft-1");
     assert_eq!(workbench["result"]["annotations"][0]["quote"], "😀");
+    assert_eq!(workbench["result"]["annotations"][0]["body"], "");
     assert_eq!(workbench["result"]["annotations"][0]["replacement"], "");
+    assert_eq!(workbench["result"]["annotations"][1]["body"], " \r\n\t ");
+    assert_eq!(workbench["result"]["annotations"][1]["replacement"], "✨");
     assert!(
         workbench["result"]["annotations"][0]
             .get("status")

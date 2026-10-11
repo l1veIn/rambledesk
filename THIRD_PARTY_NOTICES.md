@@ -26,6 +26,8 @@ Codeg 的 Agent 管理、Chat 与外观配色模块按固定 commit `3ebdfed1d7c
 | image 0.25 | 内存截图裁剪和 PNG 编码 | Apache-2.0 OR MIT | <https://github.com/image-rs/image> |
 | xterm.js 6.0.0 / addon-fit 0.11.0 | 终端画面、选区及尺寸适配 | MIT（随附 `licenses/xterm*-MIT.txt`） | <https://github.com/xtermjs/xterm.js> |
 | portable-pty 0.9.0 | 后端真实交互式终端 | MIT（随附 `licenses/portable-pty-MIT.txt`） | <https://github.com/wezterm/wezterm/tree/main/pty> |
+| mdast-util-from-markdown 2.0.3 / mdast-util-gfm 3.1.0 | Markdown 文档结构与源码位置 | MIT（随附 `licenses/markdown-MIT.txt`） | <https://github.com/syntax-tree/mdast-util-from-markdown> / <https://github.com/syntax-tree/mdast-util-gfm> |
+| micromark 4.0.2 / micromark-extension-gfm 3.0.0 / micromark-util-decode-string 2.0.1 | GFM 解析与批注选区的源码映射 | MIT（随附 `licenses/markdown-MIT.txt`） | <https://github.com/micromark/micromark> / <https://github.com/micromark/micromark-extension-gfm> / <https://github.com/micromark/micromark/tree/main/packages/micromark-util-decode-string> |
 
 模型不提交到 RambleDesk Git 仓库。开发机按 `crates/rambledesk-speech/models/`
 中的模型清单获取并校验。

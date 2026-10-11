@@ -10,7 +10,7 @@ export function speechTargetLabel(target: SpeechTarget, tr: Translate): string {
     : destination.kind === 'workbench_field'
       ? destination.label
       : destination.kind === 'review_annotation'
-      ? `${destination.paragraphLabel} · ${tr(destination.field === 'body' ? 'Comment' : 'Suggested wording')}`
+      ? `${destination.sourceLabel} · ${tr(destination.field === 'body' ? 'Comment' : 'Suggested wording')}`
       : destination.kind === 'question_answer'
         ? `${destination.questionLabel} · ${tr('Your answer')}`
         : destination.kind === 'web_review_annotation'

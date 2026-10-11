@@ -77,9 +77,9 @@ describe('field attachment text', () => {
   })
 
   it('unlinks a shared file across comment and suggestion fields without changing review anchors', () => {
-    const annotation = { id: 'one', paragraph_id: 'opening', start: null, end: null, quote: null, kind: 'suggestion' as const,
+    const annotation = { id: 'one', start: null, end: null, quote: null, kind: 'suggestion' as const,
       body: `Comment\n\n${screenshot}`, replacement: `Rewrite\n\n${screenshot}` }
-    const original = withWorkbenchState(snapshotFeedbackDraftMarkdown('Notes'), { type: 'document_review', verdict: 'changes_requested', paragraph_marks: [],
+    const original = withWorkbenchState(snapshotFeedbackDraftMarkdown('Notes'), { type: 'document_review', verdict: 'changes_requested',
       annotations: [annotation, { ...annotation, id: 'two', kind: 'comment', replacement: null }],
     })
     expect(readWorkbenchState(removeWorkbenchAttachmentReferences(original, 'screen').documentJson)).toMatchObject({ annotations: [

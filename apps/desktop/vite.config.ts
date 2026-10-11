@@ -21,6 +21,7 @@ function thirdPartyNotices(): Plugin {
         'licenses/xterm-MIT.txt',
         'licenses/xterm-addon-fit-MIT.txt',
         'licenses/portable-pty-MIT.txt',
+        'licenses/markdown-MIT.txt',
         'docs/CODEG_PORTS.md',
       ]) {
         this.emitFile({

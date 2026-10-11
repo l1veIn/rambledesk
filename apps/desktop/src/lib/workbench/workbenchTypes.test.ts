@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mount, unmount, type ComponentProps } from 'svelte'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { workbenchPreviewWorkspace } from '../../dev/workbenchPreviewFixtures'
 import { previewHostProfile } from '../../dev/agentPreviewFixtures'
 import { createUnavailableWorkbenchCapabilities } from '../capabilities/unavailableCapabilities'
@@ -11,6 +11,9 @@ import { locale } from '../preferences'
 import SessionWorkbench from './SessionWorkbench.svelte'
 import type { WorkbenchSpec } from '../generated/feedback'
 import { diffReviewDefinition } from './definitions/diff_review/definition'
+import { documentReviewDefinition } from './definitions/document_review/definition'
+import { brainstormDefinition } from './definitions/brainstorm/definition'
+import { findWorkbenchExample, registeredWorkbenchExamples } from './definitions/examples'
 import { snapshotFeedbackDraftMarkdown, updateFeedbackDraftState } from '../feedbackDraftDocument'
 import { writable } from 'svelte/store'
 import { VOICE_INPUT_CONTEXT, type VoiceInputContext, type VoiceInputState } from '../speech/voiceInputContext'
@@ -19,13 +22,14 @@ import { replaceInputText } from '../../test/tiptap'
 
 let view: ReturnType<typeof mount> | undefined
 const snapshots: FeedbackDraftSnapshot[] = []
-const singleQuestion = workbenchPreviewWorkspace(2).workbench!
+const singleQuestion = previewWorkspace('questions:2').workbench!
 const compactLabel = '紧凑布局：同屏展示更多信息'
 const selectedQuestion = { type: 'questions', answers: [{ id: 'layout', value: 'compact', label: compactLabel, wasCustom: false, index: 1 }] }
 // Kept only to protect saved requests created before single decisions moved to questions.
 const legacyChoice: WorkbenchSpec = { type: 'single_choice', version: 1, data: {
   prompt: 'Choose a layout', options: [{ id: 'compact', label: 'Compact layout' }, { id: 'roomy', label: 'Roomy layout' }],
 } }
+beforeAll(async () => { await Promise.all([documentReviewDefinition.loadView(), brainstormDefinition.loadView()]) })
 beforeEach(() => {
   locale.set('en'); snapshots.length = 0
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
@@ -34,8 +38,14 @@ beforeEach(() => {
 })
 afterEach(async () => { if (view) await unmount(view); view = undefined; document.body.replaceChildren(); vi.unstubAllGlobals() })
 
-function open(index: number, readOnly = false, documentJson?: string, spec?: WorkbenchSpec, extra: Partial<ComponentProps<typeof SessionWorkbench>> = {}, voice?: VoiceInputContext) {
-  const workspace = workbenchPreviewWorkspace(index)
+function previewWorkspace(selector: string) {
+  const example = findWorkbenchExample(selector)
+  if (!example) throw new Error('Missing workbench example: ' + selector)
+  return workbenchPreviewWorkspace(registeredWorkbenchExamples.indexOf(example))
+}
+
+function open(selector: string, readOnly = false, documentJson?: string, spec?: WorkbenchSpec, extra: Partial<ComponentProps<typeof SessionWorkbench>> = {}, voice?: VoiceInputContext) {
+  const workspace = previewWorkspace(selector)
   if (spec) workspace.workbench = spec
   workspace.draft.document_json = documentJson ?? null
   view = mount(SessionWorkbench, { target: document.body, context: voice ? new Map([[VOICE_INPUT_CONTEXT, voice]]) : undefined, props: {
@@ -51,9 +61,26 @@ const button = (text: string) => Array.from(document.querySelectorAll('button'))
 const latest = () => readWorkbenchState(snapshots.at(-1)?.documentJson)
 
 describe('workbench interaction state is independent of feedback notes', () => {
+  it('opens brainstorm overall feedback idempotently from its CTA without submitting or resetting the existing editor', async () => {
+    const onSubmit = vi.fn()
+    open('brainstorm', false, snapshotFeedbackDraftMarkdown('Keep this note').documentJson, undefined, { onSubmit })
+    await vi.waitFor(() => expect(document.querySelector('[data-brainstorm]')).not.toBeNull())
+    const editor = document.querySelector('[data-feedback-region] .feedback-prose')!
+    const region = document.querySelector<HTMLElement>('[data-feedback-region]')!
+    const trigger = button('Review and send this round')
+    expect(region.inert).toBe(true)
+    trigger.click(); await vi.waitFor(() => expect(region.inert).toBe(false))
+    expect(document.activeElement).toBe(document.querySelector('[data-feedback-drawer-heading] button'))
+    trigger.click(); await vi.waitFor(() => expect(region.inert).toBe(false))
+    expect(document.querySelectorAll('[data-feedback-region] .feedback-prose')).toHaveLength(1)
+    expect(document.querySelector('[data-feedback-region] .feedback-prose')).toBe(editor)
+    expect(editor.textContent).toContain('Keep this note')
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(snapshots).toHaveLength(0)
+  })
   it('allows a historical diff to open its expanded tab while all editing remains disabled', async () => {
     const onOpenReview = vi.fn()
-    open(0, true, undefined, diffReviewDefinition.examples![0].spec, { onOpenReview })
+    open('ramble', true, undefined, diffReviewDefinition.examples![0].spec, { onOpenReview })
     await vi.waitFor(() => expect(document.querySelector('[data-diff-review]')).not.toBeNull())
     button('Full screen review').click()
     expect(onOpenReview).toHaveBeenCalledOnce()
@@ -63,10 +90,11 @@ describe('workbench interaction state is independent of feedback notes', () => {
   })
   it('opens web review as an ordinary workbench and delegates full review to navigation', async () => {
     const onOpenReview = vi.fn()
-    open(4, false, undefined, undefined, { onOpenReview })
+    open('web_review', false, undefined, undefined, { onOpenReview })
     await vi.waitFor(() => expect(document.querySelector('iframe')).not.toBeNull())
     const container = document.querySelector('[data-workbench-review-mode]')!
     expect(container.getAttribute('data-workbench-review-mode')).toBe('false')
+    expect(container.getAttribute('data-workbench-feedback-placement')).toBe('column')
     expect(document.querySelector('[data-feedback-region]')).not.toBeNull()
     expect(document.querySelector('[data-web-review-toolbar]')?.contains(button('Open review tab'))).toBe(true)
     expect(document.querySelector('[data-workbench-display-controls]')).toBeNull()
@@ -75,9 +103,120 @@ describe('workbench interaction state is independent of feedback notes', () => {
     expect(container.getAttribute('data-workbench-review-mode')).toBe('false')
   })
 
+  it('opens document feedback only on demand and retains its editor, attachment references and voice destination', async () => {
+    const workspace = previewWorkspace('document_review')
+    const documentJson = snapshotFeedbackDraftMarkdown('Keep evidence\n\n![evidence](attachment://proof)').documentJson
+    const target: SpeechTarget = { requestId: workspace.request.request_id, requestTitle: workspace.request.title,
+      destination: { kind: 'document', action: null } }
+    const voice: VoiceInputContext = { state: writable({ requestId: target.requestId, documentTarget: target, nextTarget: null, recording: false, disabled: false }),
+      start: vi.fn(), stop: vi.fn(), selectTarget: vi.fn() }
+    open('document_review', false, documentJson, undefined, { workspace, savedRevision: 7, savePhase: 'saved' }, voice)
+    await vi.waitFor(() => expect(document.querySelector('.feedback-prose[contenteditable="true"]')).not.toBeNull())
+    const container = document.querySelector('[data-workbench-review-mode]')!
+    const editor = document.querySelector('.feedback-prose[contenteditable="true"]')!
+    const feedback = document.querySelector<HTMLElement>('[data-feedback-region]')!
+    const trigger = button('Overall feedback and submit')
+    expect(container.getAttribute('data-workbench-review-mode')).toBe('false')
+    expect(container.getAttribute('data-workbench-feedback-placement')).toBe('drawer')
+    expect(container.classList.contains('workbench-feedback-visible')).toBe(false)
+    expect(feedback.inert).toBe(true)
+    expect(document.querySelector('[data-workbench-save-status]')?.textContent).toContain('Saved · r7')
+    expect(button('Return to workbench')).toBeUndefined()
+
+    trigger.click()
+    await vi.waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'))
+    expect(feedback.inert).toBe(false)
+    editor.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    expect(voice.selectTarget).toHaveBeenLastCalledWith(target)
+    expect(voice.start).not.toHaveBeenCalled()
+    view!.applyDraftOperation({ kind: 'appendClipboardText', text: 'Keep this overall note', label: 'Clipboard', action: null })
+    await vi.waitFor(() => expect(snapshots.at(-1)?.bodyMarkdown).toContain('Keep this overall note'))
+    expect(snapshots.at(-1)?.bodyMarkdown).toContain('attachment://proof')
+    document.querySelector<HTMLButtonElement>('[data-feedback-drawer-heading] button')!.click()
+    await vi.waitFor(() => expect(document.activeElement).toBe(trigger))
+    expect(feedback.inert).toBe(true)
+    trigger.click()
+    await vi.waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'))
+    expect(document.querySelectorAll('.feedback-prose[contenteditable="true"]')).toHaveLength(1)
+    expect(document.querySelector('.feedback-prose[contenteditable="true"]')).toBe(editor)
+    expect(editor.textContent).toContain('Keep this overall note')
+    expect(snapshots.at(-1)?.bodyMarkdown).toContain('attachment://proof')
+    view!.removeAttachmentReference('proof')
+    await vi.waitFor(() => expect(snapshots.at(-1)?.bodyMarkdown).not.toContain('attachment://proof'))
+  })
+
+  it('closes a feedback drawer with Escape without intercepting dialogs, IME or consumed keys', async () => {
+    open('document_review')
+    await vi.waitFor(() => expect(button('Overall feedback and submit')).toBeDefined())
+    const trigger = button('Overall feedback and submit')
+    trigger.click()
+    await vi.waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'))
+    const close = document.querySelector<HTMLButtonElement>('[data-feedback-drawer-heading] button')!
+    const composing = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, isComposing: true })
+    close.dispatchEvent(composing)
+    expect(composing.defaultPrevented).toBe(false)
+    const consumed = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    consumed.preventDefault(); close.dispatchEvent(consumed)
+    const dialog = document.createElement('div')
+    dialog.setAttribute('role', 'dialog'); dialog.innerHTML = '<button>Dialog control</button>'
+    document.body.append(dialog)
+    const dialogEscape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    dialog.firstElementChild!.dispatchEvent(dialogEscape)
+    expect(dialogEscape.defaultPrevented).toBe(false)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    const outside = document.createElement('input'); document.body.append(outside)
+    const outsideEscape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    outside.dispatchEvent(outsideEscape)
+    expect(outsideEscape.defaultPrevented).toBe(false)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    close.dispatchEvent(escape)
+    await vi.waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('false'))
+    expect(escape.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('closes from the real feedback editor before ProseMirror consumes Escape and keeps the draft', async () => {
+    open('document_review')
+    await vi.waitFor(() => expect(document.querySelector('.feedback-prose[contenteditable="true"]')).not.toBeNull())
+    document.querySelector<HTMLButtonElement>('[data-tour-skip]')?.click()
+    await vi.waitFor(() => expect(document.querySelector('[data-workbench-spotlight-tour]')).toBeNull())
+    const trigger = button('Overall feedback and submit')
+    trigger.click()
+    await vi.waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'))
+    const editor = document.querySelector<HTMLElement>('.feedback-prose[contenteditable="true"]')!
+    replaceInputText(editor, 'Keep this real editor draft')
+    await vi.waitFor(() => expect(snapshots.at(-1)?.bodyMarkdown).toContain('Keep this real editor draft'))
+    const key = (extra: KeyboardEventInit = {}) => new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true, ...extra })
+    const composing = key({ isComposing: true }); editor.dispatchEvent(composing)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    const consumed = key(); consumed.preventDefault(); editor.dispatchEvent(consumed)
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    editor.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+    editor.dispatchEvent(key())
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    editor.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    const menu = document.createElement('div')
+    menu.setAttribute('role', 'menu'); menu.dataset.state = 'open'; document.body.append(menu)
+    editor.dispatchEvent(key())
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    menu.remove()
+    const escape = key()
+    editor.dispatchEvent(escape)
+    await vi.waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('false'))
+    expect(escape.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(trigger)
+    trigger.click()
+    await vi.waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'))
+    expect(document.querySelector('.feedback-prose[contenteditable="true"]')).toBe(editor)
+    expect(editor.textContent).toContain('Keep this real editor draft')
+    expect(snapshots.at(-1)?.bodyMarkdown).toContain('Keep this real editor draft')
+  })
+
   it('keeps review feedback in its container and lets dialogs handle Escape', async () => {
     const onReturnToWorkbench = vi.fn()
-    open(4, false, undefined, undefined, { reviewMode: true, onReturnToWorkbench })
+    open('web_review', false, undefined, undefined, { reviewMode: true, onReturnToWorkbench })
     await vi.waitFor(() => expect(document.querySelector('iframe')).not.toBeNull())
     const frame = document.querySelector('iframe')
     const editor = document.querySelector('.feedback-prose[contenteditable="true"]')
@@ -105,12 +244,12 @@ describe('workbench interaction state is independent of feedback notes', () => {
   })
 
   it('selects the shared document voice destination on editor focus without starting the microphone', async () => {
-    const workspace = workbenchPreviewWorkspace(0)
+    const workspace = previewWorkspace('ramble')
     const target: SpeechTarget = { requestId: workspace.request.request_id, requestTitle: workspace.request.title,
       destination: { kind: 'document', action: { actionId: 'opening', actionIndex: 0, title: 'Opening' } } }
     const state = writable<VoiceInputState>({ requestId: target.requestId, documentTarget: target, nextTarget: null, recording: false, disabled: false })
     const voice = { state, start: vi.fn(), stop: vi.fn(), selectTarget: vi.fn() }
-    open(0, false, undefined, undefined, { workspace }, voice)
+    open('ramble', false, undefined, undefined, { workspace }, voice)
     await vi.waitFor(() => expect(document.querySelector('.feedback-prose[contenteditable="true"]')).not.toBeNull())
     document.querySelector('.feedback-prose[contenteditable="true"]')!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
     expect(voice.selectTarget).toHaveBeenLastCalledWith(target)
@@ -123,7 +262,7 @@ describe('workbench interaction state is independent of feedback notes', () => {
     { contract: 'questions', spec: singleQuestion, label: compactLabel, selected: selectedQuestion, cleared: { type: 'questions', answers: [] } },
     { contract: 'legacy single_choice compatibility', spec: legacyChoice, label: 'Compact layout', selected: { type: 'single_choice', selected_option_id: 'compact' }, cleared: { type: 'single_choice', selected_option_id: null } },
   ])('selects, saves and restores $contract independently of feedback notes', async ({ spec, label, selected, cleared }) => {
-    open(2, false, undefined, spec)
+    open('questions:2', false, undefined, spec)
     await vi.waitFor(() => expect(document.querySelectorAll('.feedback-prose[contenteditable="true"]')).toHaveLength(1))
     await vi.waitFor(() => expect(button(label)).toBeDefined())
     button(label).click()
@@ -133,14 +272,14 @@ describe('workbench interaction state is independent of feedback notes', () => {
     expect(canSubmitWorkbench(spec, latest(), '')).toBe(true)
     const saved = snapshots.at(-1)!.documentJson
     await unmount(view!); view = undefined; document.body.replaceChildren()
-    open(2, false, saved, spec)
+    open('questions:2', false, saved, spec)
     await vi.waitFor(() => expect(button(label).getAttribute('aria-pressed')).toBe('true'))
     button('Clear answer').click()
     await vi.waitFor(() => expect(latest()).toEqual(cleared))
   })
 
   it('keeps answers when notes change and when editor undo removes the notes', async () => {
-    open(2)
+    open('questions:2')
     await vi.waitFor(() => expect(document.querySelector('.feedback-prose[contenteditable="true"]')).not.toBeNull())
     await vi.waitFor(() => expect(button(compactLabel)).toBeDefined())
     button(compactLabel).click()
@@ -154,7 +293,7 @@ describe('workbench interaction state is independent of feedback notes', () => {
   })
 
   it('asks questions one at a time, supports custom answers, review and editing', async () => {
-    open(1)
+    open('questions:1')
     await vi.waitFor(() => expect(button('独立开发者')).toBeDefined())
     button('独立开发者').click()
     await vi.waitFor(() => expect(button('快速反馈')).toBeDefined())
@@ -167,7 +306,7 @@ describe('workbench interaction state is independent of feedback notes', () => {
     await vi.waitFor(() => expect(latest()).toMatchObject({ answers: expect.arrayContaining([expect.objectContaining({ id: 'concern', wasCustom: true, value: '希望手机上也能使用' })]) }))
     button('Review answers').click()
     await vi.waitFor(() => expect(document.body.textContent).toContain('All answers are ready'))
-    expect(canSubmitWorkbench(workbenchPreviewWorkspace(1).workbench, latest(), '')).toBe(true)
+    expect(canSubmitWorkbench(previewWorkspace('questions:1').workbench, latest(), '')).toBe(true)
     expect(snapshots.at(-1)!.bodyMarkdown).toBe('')
     button('这个产品最先服务').click()
     await vi.waitFor(() => expect(button('小团队')).toBeDefined())
@@ -177,14 +316,14 @@ describe('workbench interaction state is independent of feedback notes', () => {
   })
 
   it('locks answer controls for closed requests', async () => {
-    open(2, true)
+    open('questions:2', true)
     await vi.waitFor(() => expect(button(compactLabel).disabled).toBe(true))
     button(compactLabel).click()
     expect(snapshots).toHaveLength(0)
   })
 
   it('gives the dedicated interaction the primary area without a collapsible task brief', async () => {
-    open(1)
+    open('questions:1')
     await vi.waitFor(() => expect(button('独立开发者')).toBeDefined())
     expect(document.querySelector('[data-workbench-content] [aria-label="Questionnaire"]')).not.toBeNull()
     expect(document.querySelector('[data-request-materials] [aria-label="Questionnaire"]')).toBeNull()
@@ -198,7 +337,7 @@ describe('workbench interaction state is independent of feedback notes', () => {
     { ...singleQuestion, data: { ...singleQuestion.data, future: true } },
   ])('preserves unknown workbenches as read-only instead of offering an unusable feedback fallback', async (spec) => {
     const saved = updateFeedbackDraftState(snapshotFeedbackDraftMarkdown('Saved notes must remain visible'), { type: 'future_workbench', value: 'opaque' })
-    open(2, false, saved.documentJson, spec)
+    open('questions:2', false, saved.documentJson, spec)
     await vi.waitFor(() => expect(document.body.textContent).toContain('Saved notes must remain visible'))
     expect(document.body.textContent).toContain('preserved in read-only mode')
     expect(document.querySelector('.feedback-prose[contenteditable="true"]')).toBeNull()
@@ -208,10 +347,10 @@ describe('workbench interaction state is independent of feedback notes', () => {
   })
 
   it('allows cancelling an unsupported request while keeping draft editing and approval unavailable', async () => {
-    const workspace = workbenchPreviewWorkspace(2)
+    const workspace = previewWorkspace('questions:2')
     workspace.workbench = { type: 'future_workbench', version: 99, data: {} }
     workspace.request.allow_finish = true
-    open(2, false, undefined, undefined, { workspace, canCancel: true })
+    open('questions:2', false, undefined, undefined, { workspace, canCancel: true })
     await vi.waitFor(() => expect(document.querySelector('[data-workbench="unsupported"]')).not.toBeNull())
     expect(document.querySelector<HTMLButtonElement>('button[aria-label="Cancel feedback"]')?.disabled).toBe(false)
     expect(button('Approve and finish')).toBeUndefined()
@@ -219,21 +358,21 @@ describe('workbench interaction state is independent of feedback notes', () => {
   })
 
   it.each(['cooking', 'submitting', 'cancelling', 'approving'] as const)('keeps lifecycle actions locked while %s', async (operation) => {
-    const workspace = workbenchPreviewWorkspace(0)
+    const workspace = previewWorkspace('ramble')
     workspace.request.allow_finish = true
-    open(0, false, undefined, undefined, { workspace, canCancel: true, [operation]: true })
+    open('ramble', false, undefined, undefined, { workspace, canCancel: true, [operation]: true })
     await vi.waitFor(() => expect(button('Approve and finish') ?? button('Finishing…')).toBeDefined())
     expect(document.querySelector<HTMLButtonElement>('button[aria-label="Cancel feedback"]')?.disabled).toBe(true)
     expect((button('Approve and finish') ?? button('Finishing…')).disabled).toBe(true)
   })
 
-  it.each([0, 1, 2, 3])('only offers approval for Ramble despite a historical allow_finish flag (type %s)', async (index) => {
-    const workspace = workbenchPreviewWorkspace(index)
+  it.each(['ramble', 'questions:1', 'questions:2', 'document_review'])('only offers approval for Ramble despite a historical allow_finish flag (type %s)', async (selector) => {
+    const workspace = previewWorkspace(selector)
     workspace.request.allow_finish = true
-    open(index, false, undefined, undefined, { workspace, canCancel: true })
+    open(selector, false, undefined, undefined, { workspace, canCancel: true })
     await vi.waitFor(() => expect(document.querySelector('button[aria-label="Cancel feedback"]')).not.toBeNull())
     expect(document.querySelector<HTMLButtonElement>('button[aria-label="Cancel feedback"]')?.disabled).toBe(false)
-    if (index === 0) expect(button('Approve and finish')?.disabled).toBe(false)
+    if (selector === 'ramble') expect(button('Approve and finish')?.disabled).toBe(false)
     else expect(button('Approve and finish')).toBeUndefined()
   })
 })

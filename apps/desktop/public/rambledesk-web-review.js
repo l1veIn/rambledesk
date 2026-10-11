@@ -155,7 +155,11 @@
       return
     }
     if (!session || event.origin !== session.origin || data.channel !== session.channel) return
-    if (data.type === 'mode') { mode = data.mode === 'select' ? 'select' : 'browse'; hovered = null }
+    if (data.type === 'mode') {
+      if (mode === 'select' && data.mode !== 'select') { selected = null; selectedId = null }
+      mode = data.mode === 'select' ? 'select' : 'browse'
+      hovered = null
+    }
     else if (data.type === 'markers' && Array.isArray(data.markers)) {
       markers = data.markers.slice(0, 500).filter((item) => item && typeof item.id === 'string' && typeof item.selector === 'string' && typeof item.page_url === 'string' && Number.isInteger(item.number))
       selectedId = typeof data.selected_id === 'string' ? data.selected_id : null
@@ -183,8 +187,18 @@
   window.addEventListener('pointerleave', () => { hovered = null; update() }, true)
   for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu']) window.addEventListener(type, intercept, true)
   window.addEventListener('keydown', (event) => {
-    if (session && mode === 'select' && event.key === 'Escape') { selected = null; hovered = null; send('anchor', { rect: null, ...page() }); update() }
-  }, true)
+    if (!session || mode !== 'select' || event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.keyCode === 229) return
+    // Page controls and editors own their Escape key, including IME cancellation.
+    if (event.composedPath().some((node) => node instanceof Element &&
+      (node.matches('input, textarea, select') || node.isContentEditable || node.getAttribute('contenteditable') === '' || node.getAttribute('contenteditable') === 'true'))) return
+    event.preventDefault()
+    mode = 'browse'
+    selected = null
+    selectedId = null
+    hovered = null
+    send('selection_cancelled', {})
+    update()
+  })
   window.addEventListener('scroll', update, true)
   window.addEventListener('resize', update)
   window.addEventListener('hashchange', update)

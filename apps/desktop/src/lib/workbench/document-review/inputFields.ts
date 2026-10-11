@@ -1,6 +1,16 @@
 import type { DocumentReviewData } from '../../generated/feedback'
 import type { WorkbenchFieldAdapter } from '../fields/contracts'
 import { fieldFingerprint, validFieldText } from '../fields/value'
+import { Sha256 } from '../../sha256'
+
+const sourceDigests = new WeakMap<DocumentReviewData, { markdown: string; digest: string }>()
+function sourceDigest(data: DocumentReviewData): string {
+  const cached = sourceDigests.get(data)
+  if (cached?.markdown === data.markdown) return cached.digest
+  const digest = new Sha256().update(new TextEncoder().encode(data.markdown)).digestHex()
+  sourceDigests.set(data, { markdown: data.markdown, digest })
+  return digest
+}
 
 export const documentReviewInputFields: readonly WorkbenchFieldAdapter[] = [{
   accepts: (target) => target.destination.kind === 'review_annotation',
@@ -40,10 +50,8 @@ export const documentReviewInputFields: readonly WorkbenchFieldAdapter[] = [{
     const annotations = state.annotations.filter((item) => item.id === destination.annotationId)
     if (annotations.length !== 1) throw new Error('The target comment no longer exists or has an ambiguous id.')
     const annotation = annotations[0]
-    const paragraph = data.paragraphs.find((item) => item.id === annotation.paragraph_id)
-    if (!paragraph) throw new Error('The target comment refers to an unavailable paragraph.')
     if (annotation.start !== null || annotation.end !== null || annotation.quote !== null) {
-      const text = [...paragraph.text]
+      const text = [...data.markdown]
       if (annotation.start === null || annotation.end === null || !Number.isInteger(annotation.start) || !Number.isInteger(annotation.end)
         || annotation.start < 0 || annotation.end <= annotation.start || annotation.end > text.length
         || text.slice(annotation.start, annotation.end).join('') !== annotation.quote) throw new Error('The target comment no longer matches the original text.')
@@ -56,8 +64,8 @@ export const documentReviewInputFields: readonly WorkbenchFieldAdapter[] = [{
     return {
       value: annotation[destination.field]!, limit: destination.field === 'body' ? 4000 : 8000,
       contract: fieldFingerprint({ type: spec.type, version: spec.version, sourceVersion: data.source_version,
-        paragraphId: paragraph.id, paragraphText: paragraph.text }),
-      identity: fieldFingerprint({ id: annotation.id, paragraphId: annotation.paragraph_id, kind: annotation.kind,
+        sourceSha256: sourceDigest(data) }),
+      identity: fieldFingerprint({ id: annotation.id, kind: annotation.kind,
         start: annotation.start, end: annotation.end, quote: annotation.quote }),
       replace: (value) => ({ ...state, annotations: state.annotations.map((item) => item === annotation ? { ...item, [destination.field]: value } : item) }),
     }

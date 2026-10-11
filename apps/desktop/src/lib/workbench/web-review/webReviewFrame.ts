@@ -11,6 +11,7 @@ type FrameOptions = Readonly<{
   onAnchor?: (rect: WebReviewRect | null) => void
   onAnnotationClick?: (id: string) => void
   onFocusMissing?: (reason: 'page_changed' | 'element_missing') => void
+  onSelectionCancel?: () => void
   window?: Window
   timeoutMs?: number
 }>
@@ -77,6 +78,12 @@ export function createWebReviewFrame(options: FrameOptions) {
       }
     } else if (ready && data.type === 'annotation_click' && typeof data.id === 'string' && markers.some(item => item.id === data.id)) {
       options.onAnnotationClick?.(data.id)
+    } else if (ready && mode === 'select' && data.type === 'selection_cancelled') {
+      mode = 'browse'
+      selectedId = null
+      pendingFocus = null
+      options.onAnchor?.(null)
+      options.onSelectionCancel?.()
     } else if (ready && data.type === 'focus_missing' && (data.reason === 'page_changed' || data.reason === 'element_missing')) {
       options.onAnchor?.(null)
       options.onFocusMissing?.(data.reason)
@@ -120,7 +127,11 @@ export function createWebReviewFrame(options: FrameOptions) {
 
   return {
     connect,
-    setMode(next: 'browse' | 'select') { mode = next; if (ready) post('mode', { mode }) },
+    setMode(next: 'browse' | 'select') {
+      if (mode === 'select' && next === 'browse') pendingFocus = null
+      mode = next
+      if (ready) post('mode', { mode })
+    },
     setAnnotations(next: readonly WebReviewMarker[], nextSelectedId: string | null = null) {
       markers = next
       selectedId = nextSelectedId

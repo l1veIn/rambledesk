@@ -165,8 +165,8 @@ function reviewSnapshot(body: string): FeedbackDraftSnapshot {
     documentJson: JSON.stringify({
       schemaVersion: 2,
       doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Unsubmitted general notes' }] }] },
-      workbenchState: { type: 'document_review', verdict: null, paragraph_marks: [], annotations: [{
-        id: 'annotation-1', paragraph_id: 'paragraph-1', start: null, end: null, quote: null,
+      workbenchState: { type: 'document_review', verdict: null, annotations: [{
+        id: 'annotation-1', start: null, end: null, quote: null,
         kind: 'comment', body, replacement: null,
       }] },
     }),
@@ -180,7 +180,7 @@ function reviewWorkspace(body = 'Saved comment', revision = 1): FeedbackWorkspac
     ...workspace,
     request: { ...request, request_id: 'review-1', status: 'in_progress' },
     workbench: { type: 'document_review', version: 1, data: {
-      title: 'Script', source_version: 'source-v1', paragraphs: [{ id: 'paragraph-1', text: 'Immutable source text' }],
+      title: 'Script', source_version: 'source-v1', markdown: 'Immutable source text',
     } },
     draft: { ...workspace.draft, document_json: snapshot.documentJson, body_markdown: snapshot.bodyMarkdown, saved_revision: revision },
   }
@@ -188,7 +188,7 @@ function reviewWorkspace(body = 'Saved comment', revision = 1): FeedbackWorkspac
 
 const annotationSpeech: SpeechWriteInput = {
   requestId: 'review-1', requestTitle: 'Script', id: 'speech-annotation-1', text: 'Spoken comment',
-  destination: { kind: 'review_annotation', annotationId: 'annotation-1', field: 'body', sourceVersion: 'source-v1', paragraphLabel: 'First paragraph' },
+  destination: { kind: 'review_annotation', annotationId: 'annotation-1', field: 'body', sourceVersion: 'source-v1', sourceLabel: 'First paragraph' },
 }
 
 describe('late background writes in a review tab', () => {

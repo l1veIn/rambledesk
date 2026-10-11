@@ -8,12 +8,11 @@ const action = { id: 'read', instruction: 'Read the result' }
 const choice = { id: 'yes', label: 'Yes' }
 const option = { value: 'yes', label: 'Yes' }
 const question = { id: 'question', prompt: 'Continue?', options: [option, { value: 'no', label: 'No' }], allowOther: true }
-const paragraph = { id: 'intro', text: 'Original paragraph' }
 const inputs = {
   ramble: { actions: [action] },
   questions: { questions: [question] },
   single_choice: { prompt: 'Choose', options: [choice, { id: 'no', label: 'No' }] },
-  document_review: { title: 'Draft', source_version: 'v1', paragraphs: [paragraph] },
+  document_review: { title: 'Draft', source_version: 'v1', markdown: '# Draft\n\nOriginal paragraph' },
 }
 const spec = (type: keyof typeof inputs, data: object = inputs[type]): WorkbenchSpec => ({ type, version: 1, data: data as Record<string, unknown> })
 function rejected(type: keyof typeof inputs, data: object) {
@@ -45,13 +44,13 @@ describe('workbench input contract before enabling mutations', () => {
     rejected('questions', { questions: [{ ...question, future: true }] })
     rejected('questions', { questions: [{ ...question, options: [{ ...option, future: true }, question.options[1]] }] })
     rejected('single_choice', { ...inputs.single_choice, options: [{ ...choice, future: true }, inputs.single_choice.options[1]] })
-    rejected('document_review', { ...inputs.document_review, paragraphs: [{ ...paragraph, future: true }] })
+    rejected('document_review', { ...inputs.document_review, paragraphs: [{ id: 'intro', text: 'Old shape' }] })
   })
 
   it('rejects empty and oversized collections, duplicate identities, and invalid IDs', () => {
     const contracts = [
       ['ramble', 'actions', action, 1, 20], ['questions', 'questions', question, 1, 20],
-      ['single_choice', 'options', choice, 2, 20], ['document_review', 'paragraphs', paragraph, 1, 200],
+      ['single_choice', 'options', choice, 2, 20],
     ] as const
     for (const [type, key, item, min, max] of contracts) {
       rejected(type, { ...inputs[type], [key]: Array.from({ length: min - 1 }, (_, id) => ({ ...item, id: `id-${id}` })) })
@@ -101,12 +100,10 @@ describe('workbench input contract before enabling mutations', () => {
   it('validates single-choice labels and document source limits including total scalar length', () => {
     rejected('single_choice', { ...inputs.single_choice, options: [{ ...choice, label: 'x'.repeat(2001) }, inputs.single_choice.options[1]] })
     for (const source_version of ['', ' ', '\0', 'x'.repeat(129)]) rejected('document_review', { ...inputs.document_review, source_version })
-    for (const invalid of [{ label: 4 }, { label: 'x'.repeat(129) }, { label: '\0' }, { text: ' ' }, { text: 'x'.repeat(8001) }]) {
-      rejected('document_review', { ...inputs.document_review, paragraphs: [{ ...paragraph, ...invalid }] })
+    for (const markdown of [null, 4, '', ' ', '\0', '\uD800', '😀'.repeat(120001)]) {
+      rejected('document_review', { ...inputs.document_review, markdown })
     }
-    const paragraphs = Array.from({ length: 15 }, (_, index) => ({ id: `p-${index}`, text: '😀'.repeat(8000), label: null }))
-    expect(resolveWorkbenchDefinition(spec('document_review', { ...inputs.document_review, paragraphs }))).not.toBeNull()
-    rejected('document_review', { ...inputs.document_review, paragraphs: [...paragraphs, { id: 'overflow', text: 'x' }] })
+    expect(resolveWorkbenchDefinition(spec('document_review', { ...inputs.document_review, markdown: '😀'.repeat(120000) }))).not.toBeNull()
   })
 
   it('allows approval only for legacy requests and valid Ramble input', () => {

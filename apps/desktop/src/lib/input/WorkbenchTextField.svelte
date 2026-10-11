@@ -70,6 +70,9 @@
     editor.view.focus()
   }
 
+  /** Local editor commands must not finish an in-progress IME composition. */
+  export function isComposing() { return editor?.view.composing ?? false }
+
   function selectTarget() {
     // Focusing also routes pasted images; recording availability must not gate it.
     if (!disabled && target) voice?.selectTarget(target)

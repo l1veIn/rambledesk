@@ -1,6 +1,6 @@
 use super::*;
 
-const ADVERTISED_WORKBENCHES: [&str; 10] = [
+const ADVERTISED_WORKBENCHES: [&str; 11] = [
     "ramble",
     "questions",
     "document_review",
@@ -11,6 +11,7 @@ const ADVERTISED_WORKBENCHES: [&str; 10] = [
     "diff_review",
     "table_review",
     "media_review",
+    "brainstorm",
 ];
 
 #[tokio::test]
@@ -85,12 +86,44 @@ async fn every_advertised_workbench_can_be_created_by_each_managed_adapter() -> 
                     "{kind}, MCP={use_mcp}: {response}"
                 );
             }
-            let workspace = app.get_feedback_workspace(request_id.clone()).await?;
-            assert_eq!(
-                serde_json::to_value(workspace.workbench)?,
-                workbench,
-                "{kind}"
-            );
+            let workspace = app
+                .get_feedback_workspace(request_id.clone())
+                .await
+                .with_context(|| format!("{kind} workspace, MCP={create_with_mcp}"))?;
+            let persisted = serde_json::to_value(workspace.workbench)?;
+            if kind == "brainstorm" {
+                // The raw Agent proposal is resolved into a durable board at creation.
+                assert_eq!(persisted["type"], workbench["type"]);
+                assert_eq!(persisted["version"], workbench["version"]);
+                assert_eq!(persisted["data"]["title"], workbench["data"]["title"]);
+                assert_eq!(persisted["data"]["source_version"], request_id);
+                assert_eq!(persisted["data"]["board_id"], request_id);
+                assert_eq!(persisted["data"]["round"], 1);
+                assert_eq!(
+                    persisted["data"]["initial_board"]["groups"],
+                    workbench["data"]["groups"]
+                );
+                let cards = persisted["data"]["initial_board"]["cards"]
+                    .as_array()
+                    .unwrap();
+                for (card, proposal) in cards
+                    .iter()
+                    .zip(workbench["data"]["cards"].as_array().unwrap())
+                {
+                    for key in ["id", "title", "body", "group_id", "source_card_ids"] {
+                        assert_eq!(card[key], proposal[key], "brainstorm {key}");
+                    }
+                    assert_eq!(card["origin"], "agent");
+                    assert_eq!(card["origin_request_id"], request_id);
+                    assert_eq!(card["parked"], false);
+                }
+                assert_eq!(
+                    cards.len(),
+                    workbench["data"]["cards"].as_array().unwrap().len()
+                );
+            } else {
+                assert_eq!(persisted, workbench, "{kind}");
+            }
             if kind == "media_review" {
                 assert_eq!(workspace.request_attachments.len(), 1);
                 let material = &workspace.request_attachments[0];
@@ -106,7 +139,8 @@ async fn every_advertised_workbench_can_be_created_by_each_managed_adapter() -> 
                 request_id,
                 reason: "Completed request-creation contract check".into(),
             })
-            .await?;
+            .await
+            .with_context(|| format!("{kind} cancel, MCP={create_with_mcp}"))?;
         }
     }
     fixture.server.shutdown().await?;
@@ -188,6 +222,19 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
         assert_eq!(description["type"], kind);
         assert!(description["input_schema"].is_object());
         assert!(description["result_schema"].is_object());
+        if kind == "document_review" {
+            let input = &description["input_schema"]["properties"];
+            assert_eq!(input["markdown"]["type"], "string");
+            assert_eq!(input["markdown"]["maxLength"], 120_000);
+            assert!(input.get("paragraphs").is_none());
+            assert!(description["example"]["data"]["markdown"].is_string());
+            let result = &description["result_schema"];
+            assert!(result["properties"].get("paragraph_marks").is_none());
+            let annotation = &result["$defs"]["ReviewAnnotation"]["properties"];
+            assert!(annotation.is_object());
+            assert!(annotation.get("paragraph_id").is_none());
+            assert!(annotation.get("status").is_none());
+        }
     }
     let legacy_description = fixture
         .command(
@@ -265,7 +312,7 @@ async fn workbench_discovery_and_typed_requests_share_mcp_and_managed_command_co
             ]}),
             "single_choice" => json!({"type":"single_choice","selected_option_id":"compact"}),
             "document_review" => {
-                json!({"type":"document_review","verdict":"ready","annotations":[],"paragraph_marks":[]})
+                json!({"type":"document_review","verdict":"ready","annotations":[]})
             }
             "web_review" => json!({"type":"web_review","annotations":[{
                 "id":"note-1","page_url":"http://localhost:5173/","viewport":{"width":1440,"height":900},

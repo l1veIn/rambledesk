@@ -3,7 +3,7 @@ import { normalizeSpeechTarget, sameSpeechTarget, snapshotSpeechTarget, type Spe
 import { workbenchFieldTarget } from '../domain/inputTarget'
 
 const review: SpeechTarget = { requestId: 'r', requestTitle: 'Review', destination: {
-  kind: 'review_annotation', annotationId: 'a', field: 'body', sourceVersion: 'v1', paragraphLabel: 'Opening',
+  kind: 'review_annotation', annotationId: 'a', field: 'body', sourceVersion: 'v1', sourceLabel: 'Opening',
 } }
 
 describe('speech targets', () => {
@@ -48,7 +48,7 @@ describe('speech targets', () => {
     expect(sameSpeechTarget(review, snapshot)).toBe(false)
     const renamed = structuredClone(review)
     if (renamed.destination.kind !== 'review_annotation') throw new Error('fixture')
-    renamed.destination.paragraphLabel = 'New display name'
+    renamed.destination.sourceLabel = 'New display name'
     expect(sameSpeechTarget(review, renamed)).toBe(true)
     renamed.destination.sourceVersion = 'v2'
     expect(sameSpeechTarget(review, renamed)).toBe(false)

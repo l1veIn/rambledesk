@@ -12,21 +12,24 @@ async fn structured_field_attachment_references_publish_with_resolvable_manifest
     for kind in ["questions", "document_review", "web_review"] {
         let mut input = workspace.request(Uuid::now_v7().to_string());
         input.actions.clear();
-        input.workbench = Some(serde_json::from_value(if kind == "questions" {
-            json!({"type":"questions","version":1,"data":{"questions":[{
-                "id":"q","prompt":"What should change?","allowOther":true,
-                "options":[{"value":"a","label":"A"},{"value":"b","label":"B"}]
-            }]}})
-        } else if kind == "document_review" {
-            json!({"type":"document_review","version":1,"data":{
-                "title":"Script","source_version":"v1","paragraphs":[{"id":"p","text":"Original manuscript"}]
-            }})
-        } else {
-            json!({"type":"web_review","version":1,"data":{
-                "title":"Homepage","url":"http://localhost:5173/","source_version":"v1",
-                "viewport":{"width":1440,"height":900}
-            }})
-        }).unwrap());
+        input.workbench = Some(
+            serde_json::from_value(if kind == "questions" {
+                json!({"type":"questions","version":1,"data":{"questions":[{
+                    "id":"q","prompt":"What should change?","allowOther":true,
+                    "options":[{"value":"a","label":"A"},{"value":"b","label":"B"}]
+                }]}})
+            } else if kind == "document_review" {
+                json!({"type":"document_review","version":1,"data":{
+                    "title":"Guide","source_version":"v1","markdown":"# Original document"
+                }})
+            } else {
+                json!({"type":"web_review","version":1,"data":{
+                    "title":"Homepage","url":"http://localhost:5173/","source_version":"v1",
+                    "viewport":{"width":1440,"height":900}
+                }})
+            })
+            .unwrap(),
+        );
         let created = app.request_feedback(input).await.unwrap();
         let bytes = b"Reference contents".to_vec();
         let uploaded = app
@@ -43,8 +46,8 @@ async fn structured_field_attachment_references_publish_with_resolvable_manifest
         let state = if kind == "questions" {
             json!({"type":"questions","answers":[{"id":"q","value":reference,"label":reference,"wasCustom":true}]})
         } else if kind == "document_review" {
-            json!({"type":"document_review","verdict":"changes_requested","paragraph_marks":[],"annotations":[{
-                "id":"a","paragraph_id":"p","kind":"comment","body":reference,"replacement":null,
+            json!({"type":"document_review","verdict":"changes_requested","annotations":[{
+                "id":"a","kind":"comment","body":reference,"replacement":null,
                 "start":null,"end":null,"quote":null
             }]})
         } else {

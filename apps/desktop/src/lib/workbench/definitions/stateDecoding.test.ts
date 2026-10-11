@@ -5,16 +5,16 @@ import { validateReviewState } from '../document-review/reviewModel'
 describe('editable workbench draft decoding', () => {
   it('preserves incomplete review fields and extension data for editing, leaving submission validation separate', () => {
     const draft = {
-      type: 'document_review', verdict: null, paragraph_marks: [], extension: { retained: true },
+      type: 'document_review', verdict: null, extension: { retained: true },
       annotations: [{
-        id: 'note-1', paragraph_id: 'opening', body: '', kind: 'suggestion',
+        id: 'note-1', body: '', kind: 'suggestion',
         start: -1, end: null, quote: null, replacement: null,
       }],
     }
     const decoded = decodeRegisteredWorkbenchState(draft)
     expect(decoded).toBe(draft)
     if (decoded?.type !== 'document_review') throw new Error('Expected an editable review draft')
-    expect(validateReviewState({ title: 'Script', source_version: 'v1', paragraphs: [{ id: 'opening', text: 'Original' }] }, decoded))
+    expect(validateReviewState({ title: 'Script', source_version: 'v1', markdown: 'Original' }, decoded))
       .toBe('Choose a review decision.')
   })
 
@@ -28,26 +28,24 @@ describe('editable workbench draft decoding', () => {
     expect(decodeRegisteredWorkbenchState(legacy)).toBe(legacy)
   })
 
-  it.each(['open', 'resolved'])('keeps a legacy %s note while retiring its status', (status) => {
+  it('keeps independent notes anchored to the same source range', () => {
     const note = {
-      id: 'note-1', paragraph_id: 'opening', body: 'Keep this thought.', kind: 'comment',
-      start: null, end: null, quote: null, replacement: null, extension: { retained: true },
+      id: 'note-1', body: 'Keep this thought.', kind: 'comment',
+      start: 0, end: 8, quote: 'Original', replacement: null, extension: { retained: true },
     }
-    const draft = { type: 'document_review', verdict: 'changes_requested', paragraph_marks: [], annotations: [{ ...note, status }] }
+    const draft = { type: 'document_review', verdict: 'changes_requested', annotations: [note, { ...note, id: 'note-2', body: 'A separate thought.' }] }
     const decoded = decodeRegisteredWorkbenchState(draft)
-    expect(decoded).toEqual({ ...draft, annotations: [note] })
+    expect(decoded).toBe(draft)
     if (decoded?.type !== 'document_review') throw new Error('Expected an editable review draft')
-    expect(validateReviewState({ title: 'Script', source_version: 'v1', paragraphs: [{ id: 'opening', text: 'Original' }] }, decoded)).toBeNull()
-    expect(decoded.annotations[0]).not.toHaveProperty('status')
-    expect(draft.annotations[0].status).toBe(status)
+    expect(validateReviewState({ title: 'Script', source_version: 'v1', markdown: 'Original' }, decoded)).toBeNull()
+    expect(decoded.annotations).toHaveLength(2)
   })
 
   it.each([
     { type: 'questions', answers: [{ id: 'audience', value: '', label: '', wasCustom: 'true' }] },
     { type: 'single_choice', selected_option_id: 42 },
-    { type: 'document_review', verdict: 'later', annotations: [], paragraph_marks: [] },
-    { type: 'document_review', verdict: null, annotations: [], paragraph_marks: [{ paragraph_id: 'opening', decision: 'later' }] },
-    { type: 'document_review', verdict: null, annotations: [{ id: 'note-1' }], paragraph_marks: [] },
+    { type: 'document_review', verdict: 'later', annotations: [] },
+    { type: 'document_review', verdict: null, annotations: [{ id: 'note-1' }] },
     { type: 'future_workbench' },
   ])('rejects a malformed or unsupported shape: $type', (value) => {
     expect(decodeRegisteredWorkbenchState(value)).toBeNull()
