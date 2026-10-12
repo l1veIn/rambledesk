@@ -48,6 +48,9 @@ function selectSourceText(first: string, last = first) {
   const range = document.createRange()
   range.setStart(...position(start, start.textContent!.indexOf(first)))
   range.setEnd(...position(end, end.textContent!.indexOf(last) + last.length))
+  // A real pointer selection outside an editor blurs it. Range APIs alone do not,
+  // allowing ProseMirror's pending focus repair to replace this source selection.
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
   document.getSelection()!.removeAllRanges(); document.getSelection()!.addRange(range)
   document.dispatchEvent(new Event('selectionchange'))
 }
@@ -130,7 +133,7 @@ describe('Markdown document review interaction', () => {
   })
   it('maps a selection across an open card to source only, and ignores selections inside its editor', async () => {
     open({ ...emptyReviewState(), annotations: [note()] }); preview('note-1').click()
-    await vi.waitFor(() => expect(byLabel('Your comment')).not.toBeNull())
+    await vi.waitFor(() => expect(document.activeElement).toBe(byLabel('Your comment')))
     const field = byLabel('Your comment'), range = document.createRange()
     range.selectNodeContents(field); document.getSelection()!.removeAllRanges(); document.getSelection()!.addRange(range)
     document.dispatchEvent(new Event('selectionchange'))
@@ -214,6 +217,37 @@ describe('Markdown document review interaction', () => {
     await vi.waitFor(() => expect(latest.annotations).toHaveLength(2))
     expect(latest.annotations[0]).toEqual(original)
     expect(latest.annotations[1]).toMatchObject({ quote: 'This is our promise.', body: '', kind: 'comment' })
+    expect(latest.annotations[1].id).not.toBe(original.id)
+  })
+  it.each([
+    ['This is our promise.', 'This is our promise.', 'This is our promise.'],
+    ['Hello', 'Thank you', 'Hello 😀 everyone. This is our promise.\n\nThank you'],
+  ])('keeps a source selection from %s after the old editor focus timer runs', async (first, last, quote) => {
+    const original = note()
+    open({ ...emptyReviewState(), annotations: [original] })
+    preview(original.id).click()
+    await vi.waitFor(() => expect(document.activeElement).toBe(byLabel('Your comment')))
+    const field = byLabel('Your comment')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      // Re-enter the real editor so its pending ProseMirror focus repair runs deterministically.
+      field.blur(); field.focus()
+      expect(document.activeElement).toBe(field)
+      selectSourceText(first, last)
+      const sourceSelection = document.getSelection()!.toString()
+      expect(sourceSelection).toContain(first)
+      expect(sourceSelection).toContain(last)
+      await vi.advanceTimersByTimeAsync(20)
+      expect(document.getSelection()?.toString()).toBe(sourceSelection)
+      expect(document.activeElement).not.toBe(field)
+    } finally {
+      vi.useRealTimers()
+    }
+    await vi.waitFor(() => expect(button('Comment')).toBeDefined())
+    button('Comment').click()
+    await vi.waitFor(() => expect(latest.annotations).toHaveLength(2))
+    expect(latest.annotations[0]).toEqual(original)
+    expect(latest.annotations[1]).toMatchObject({ quote, body: '', kind: 'comment' })
     expect(latest.annotations[1].id).not.toBe(original.id)
   })
   it('suggests deletion from the change card without requiring a reason', async () => {
