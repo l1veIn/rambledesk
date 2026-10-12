@@ -205,6 +205,8 @@ describe('Markdown document review interaction', () => {
     open({ ...emptyReviewState(), annotations: [original] })
     preview(original.id).click()
     await vi.waitFor(() => expect(inputText(byLabel('Your comment'))).toBe(original.body))
+    // Opening the card focuses its editor after positioning; wait for that before selecting new source text.
+    await vi.waitFor(() => expect(document.activeElement).toBe(byLabel('Your comment')))
     selectSourceText('This is our promise.')
     await vi.waitFor(() => expect(button('Comment')).toBeDefined())
     expect(byLabel('Selected passage').textContent).toContain('This is our promise.')

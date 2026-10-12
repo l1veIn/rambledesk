@@ -16,6 +16,51 @@
 
 ---
 
+## v0.5.1-rc.1
+
+What's new in RambleDesk 0.5.1-rc.1
+
+This is a release candidate for testing changes since 0.5.0, not a new stable release. Back up your complete data directory, attachment library, and configuration before trying it.
+
+Markdown document review
+Read a complete Markdown document with headings, lists, tables, and code blocks. Select text across paragraphs, leave multiple comments on the same passage, or comment on the whole document. Comments and suggested rewrites stay beside the original; a blank replacement expresses a deletion suggestion. Suggested rewrites may omit a reason, while ordinary comments still require text. The original document remains unchanged.
+
+Finish a local comment with Ctrl/Cmd+Enter, then continue reading; this does not submit the whole request. The overall feedback drawer keeps one editor and preserves its text when closed. Raw HTML is not executed, images use alt-text placeholders, and uncertain mappings fall back to the original Markdown. Very large or structurally dense documents may pause during parsing or use a plain-text fallback.
+
+Compatibility change: document_review remains version 1, but its input now uses title, source_version, and markdown instead of paragraphs. Annotations use ranges in the complete raw Markdown; paragraph_id and paragraph_marks are removed. Old paragraph-based requests and drafts are not migrated. Integrations must read the updated contract and create a new request using the Markdown input. Contract: https://github.com/l1veIn/rambledesk/blob/v0.5.1-rc.1/docs/workbench/document-review.md
+
+Multi-round brainstorming
+An eleventh workbench adds editable idea cards, groups, selection, and parked ideas. Freely switch between exploring, organizing, and focusing, then ask the Agent to explore more, expand a selection, combine ideas, or continue the task in the chosen direction. These are submitted instructions, not immediate model calls.
+
+A new round can inherit a completed board in the same session scope. Human edits, groups, selections, and parked cards are retained; the Agent can append new proposals without replacing existing cards. Referenced published user attachments in card text are copied into the child request. Retrying the same request does not reset an edited draft. Contract: https://github.com/l1veIn/rambledesk/blob/v0.5.1-rc.1/docs/workbench/brainstorm.md
+
+Agent setup and everyday feedback
+Improve first-run DeepSeek setup guidance, including a configuration entry when the first prompt fails without a structured error. Distinguish an installed DSH CLI from one that still needs profile initialization, and provide re-detection. Fix external DSH cancellation when the reason is omitted or blank. Successful connection checks do not imply completed authentication or a working model response.
+
+Free-feedback text supports Ctrl/Cmd+Enter through the existing submission checks. Web review can leave element-selection mode with Escape without losing draft comments, while preserving page input and IME behavior; stale element-location errors are cleared. Pages hosting their own review bridge must update that script for the new cancellation event.
+
+The bilingual README and website now show recorded workbench interactions and related projects and research. The playground covers eleven workbench types in fourteen scenarios. Typed workbench support still depends on the adapter: existing Pi/DSH native tools retain their action-based contract; ACP command and Generic MCP provide typed discovery and requests.
+
+Candidate scope
+This candidate targets Windows x64 NSIS and Apple Silicon macOS DMG; RC builds omit MSI. Windows updater signatures are separate from Authenticode, which is not enabled. The macOS build remains ad-hoc signed, without notarization or in-app updates.
+
+Source tests, browser fixtures, isolated Agent probes, and demo recordings are not acceptance of this candidate's installed application. Clean-machine installation, real sign-in and model continuation, native microphone/screen-capture permissions, and platform-specific behavior require their own evidence. No new native-device acceptance is claimed here. Version 0.4.0 still cannot open a database upgraded by 0.5.0 or later; rollback requires the complete pre-upgrade backup.
+
+中文摘要
+0.5.1-rc.1 是供测试的候选版，包含 0.5.0 之后的改进，不是新的正式版。试用前请完整备份数据库目录、附件资料库和应用配置。
+
+文档审阅改为完整 Markdown，支持标题、列表、表格和代码块，以及同段多条、跨段和全文批注。意见与建议改写贴近原文，空替换表示建议删除，改写理由可选，普通批注仍需填写意见；原稿不变。Ctrl/Cmd+Enter 只完成当前批注，整轮反馈仍需统一提交；整体意见抽屉保留同一正文编辑器。原始 HTML 不执行，图片只显示替代文字，无法精确映射时回退原文；极大或结构密集的文档仍可能在解析时短暂停顿或退回纯文本。
+
+兼容变化：document_review 仍为 v1，但输入从 paragraphs 改为 title、source_version、markdown，批注使用全篇原始 Markdown 范围，移除 paragraph_id 和 paragraph_marks。旧分段请求与草稿不迁移，接入方需更新合同并以 Markdown 重新创建请求。详见上述文档审阅合同。
+
+新增第十一种工作台：头脑风暴。可编辑想法卡片、分组、多选和暂放，自由切换发散、整理、聚焦，再提交探索、展开、组合或按选中方向继续的意图。同一会话范围内的新一轮继承已完成看板，保留人的改字、分组、选择和暂放；Agent 只追加新提案，不覆盖旧卡。卡片正文引用的已发布用户附件会复制到子请求，重复创建不会重置已编辑草稿。这些操作不会在提交前直接调用模型。
+
+改善 DeepSeek 首次配置指引和无结构化错误时的配置入口；区分 DSH 已安装与尚未初始化 profile，提供重新检测；修复外部 DSH 省略或留空取消原因时失败。握手成功不等于真实认证和模型首轮已经可用。
+
+自由反馈正文新增 Ctrl/Cmd+Enter 快捷提交，沿用原有门禁。网页评审按 Escape 退出元素选择并保留批注草稿，尊重页面输入与输入法，清除过时定位错误；自行部署网页 bridge 的页面需更新脚本。双语 README 与官网加入真实操作录制、相关项目和研究资料，Playground 用十四个场景覆盖十一种工作台。Pi/DSH 原生工具仍沿用 actions 合同，类型发现和新工作台请求通过 ACP command 或通用 MCP 使用。
+
+候选包面向 Windows x64 NSIS 与 Apple Silicon macOS DMG，不提供 MSI。Windows 更新签名不等于 Authenticode；macOS 仍为 ad-hoc 签名，未公证、不支持应用内更新。源码测试、浏览器夹具、隔离 Agent 探针与录制不替代本候选包的干净机器安装、真实登录和模型续接、原生权限或各平台体验验收，本说明不宣称这些已经通过。0.4.0 仍无法打开由 0.5.0 及后续版本升级的数据库，回退须恢复升级前完整备份。
+
 ## v0.5.0
 
 What's new in RambleDesk 0.5.0
