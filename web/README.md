@@ -1,6 +1,6 @@
 # RambleDesk marketing site
 
-Astro renders English `/` and Simplified Chinese `/zh/`. Svelte hydrates only the interactive product mock. This site is separate from the desktop application's browser client.
+Astro renders English `/` and Simplified Chinese `/zh/`. Svelte hydrates only the workbench demo gallery. This site is separate from the desktop application's browser client.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -13,14 +13,13 @@ pnpm -C web preview --host 127.0.0.1 --port 4322
 
 `pnpm dev:web` at the repository root starts the desktop application's web client, not this site.
 
-- `src/content/site.ts` owns bilingual page copy, release downloads and documentation links. Keep download version and documentation tag aligned; verify both platform assets when updating.
-- `src/content/feedback-example.ts` owns the single example used by the request card.
-- `src/content/product-mock.ts` owns the scripted projects, sessions, requests, task briefs, documents, package files and both locales' labels for the interactive product mock. It is demonstration data: no transport, no agent, no network.
-- `LandingPage.astro` owns the page structure, navigation and progressive motion. The mock is split by surface: `ProductMock.svelte` (state, window chrome, project/session rail, request rail), `MockWorkspace.svelte` (workspace header, task brief, feedback document, Agent and settings views), `MockCommandRail.svelte` (Ramble, add context, attachments, feedback package, Rambelle status) and `MockCaptureThumb.svelte` (the illustrative capture). The page's main narrative is rendered on the server; the mock's first view renders without hydration too.
-- The mock mirrors the desktop workbench (`apps/desktop/src/lib/{shell,components/navigation,workspace,workbench}`): titlebar with workspace tabs, project → session rail (240px, 56px collapsed), request rail (240px), task brief above the feedback document, command rail (288px), and the same labels, status words and delivery semantics. Rail widths follow `railResize.ts` defaults. The mock uses its own 1320 × 840 presentation frame; this is not a guarantee of the native window's minimum size. Sizes collapse on the mock's own width through a container query (1100px), so the rails stay visible while the page is wide enough.
-- `public/assets/refresh/` contains text-free production art, the geometric brand mark, and four byte-identical copies of desktop assets (`rambledesk-app-icon.webp`, `rambelle-{idle,recording,archived}.webp`). The hero selects an independently composed mobile image below 960px. Titles, requests, controls and feedback are live HTML.
+- `src/content/site.ts` owns bilingual copy, workbench descriptions, release downloads and documentation links. Installation guides follow the release tag; the current development overview and related work link to `main`. Verify both platform assets when updating the release version.
+- `LandingPage.astro` owns page structure, navigation and progressive motion. Its main narrative renders without JavaScript.
+- `WorkbenchDemos.svelte` presents four real UI recordings with corresponding English and Chinese content. It renders the first poster on the server, loads video only on an explicit play action, and supports keyboard tab navigation and native video controls. Switching workbenches stops playback. Keep the complete workbench visible; do not crop the recordings to fit a fixed-height frame.
+- `public/assets/workbenches/` contains six-second MP4 clips and WebP posters. See its [media provenance](public/assets/workbenches/README.md) and the [README capture notes](../docs/screenshots/README.md). These are recordings of the local browser preview with demonstration materials, not live agent sessions. The gallery identifies development features that are not included in the stable download.
+- `public/assets/refresh/` contains the existing text-free production art and geometric brand mark. The hero selects an independently composed mobile image below 960px. Titles, descriptions and controls are live HTML.
 
-The product mock is explicitly an interactive model. It is labelled 「交互示例 · 演示数据」 / "Interactive example · demonstration data" above the window and again below it. A visitor can expand a project, switch sessions and requests, filter requests by status, search sessions, collapse either rail, collapse the task brief, add a brief action as an `@Action` group, start and stop a scripted recording that writes a pending speech segment, tidy that segment, attach an illustrative capture, edit document text in place, submit the feedback, watch the delivery state move from waiting to delivered, cancel a request, open the published package, and restart the example. Every one of those results is scripted. Keep the labelling, keep the results consistent with the product's real semantics (delivered means the continuation message reached the session, not that the task is done), and never present the mock as a recording. The linked v0.3.2 GIF stays the only real product animation; a new recording can replace the mock when one exists.
+The earlier scripted `ProductMock.svelte` and its supporting components/data remain as historical examples with their tests; they are no longer imported by the landing page. Do not describe them as the current product interface.
 
 Design decisions and production art provenance live in [docs/design/README.md](../docs/design/README.md).
 

@@ -297,7 +297,7 @@ h2 {
   clip-path: polygon(50% 0, 94% 25%, 94% 75%, 50% 100%, 6% 75%, 6% 25%);
 }
 h1 {
-  font-size: clamp(58px, 5.55vw, 80px);
+  font-size: clamp(48px, 4.4vw, 72px);
   font-weight: 740;
   line-height: 1.08;
   letter-spacing: -0.058em;
@@ -307,7 +307,7 @@ h1 span {
   display: block;
 }
 :lang(zh) h1 {
-  font-size: clamp(66px, 6.96vw, 112px);
+  font-size: clamp(48px, 4.5vw, 72px);
   line-height: 1.13;
 }
 .hero-body {
@@ -359,172 +359,113 @@ h1 span {
   margin-left: auto;
   font-size: 23px;
 }
-.request-section {
-  position: relative;
+.workflow-section {
   background: linear-gradient(135deg, #f7f9fc, #edf4fa);
   border-top: 1px solid #dce7ee;
 }
-.request-section::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: calc(50% + min(100%, var(--page-width)) * 0.09);
-  width: 110px;
-  height: 1px;
-  background: #9cbfd8;
-  transform: rotate(-34deg);
-  transform-origin: left;
-}
-.request-grid {
-  display: grid;
-  grid-template-columns: 0.94fr 1fr;
-  gap: 8%;
-  align-items: center;
-}
 .section-copy > p:not(.section-label) {
-  max-width: 380px;
+  max-width: 800px;
   margin-top: 23px;
   font-size: 17px;
   line-height: 1.9;
   color: var(--muted);
 }
-.editorial-rule {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 37px;
-}
-.editorial-rule span {
-  width: 72px;
-  height: 1px;
-  background: #9cbdd2;
-}
-.editorial-rule i {
-  width: 4px;
-  height: 4px;
-  background: #78a7c6;
-  transform: rotate(45deg);
-}
-.section-copy small {
-  display: block;
-  margin-top: 14px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--muted);
-}
-.request-card {
-  position: relative;
-  background: #ffffffed;
-  border: 1px solid #d8e5ef;
-  border-radius: 10px;
-  padding: 30px 34px 20px;
-  box-shadow:
-    0 18px 50px #2851700d,
-    0 2px 8px #28517008;
-}
-.request-topline {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  font-size: 12px;
-}
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #9a5814;
-  font-weight: 560;
-}
-.status i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #e99228;
-}
-.example-label {
-  color: var(--muted);
-}
-.request-card h3 {
-  font-size: 23px;
-  line-height: 1.45;
-  margin-top: 22px;
-  padding-bottom: 23px;
-  border-bottom: 1px solid var(--line);
-}
-.request-card dl {
-  margin: 24px 0 29px;
+.workflow-steps {
+  list-style: none;
+  padding: 0;
+  margin: 42px 0 0;
   display: grid;
-  gap: 24px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
 }
-.request-card dt {
+.workflow-steps li {
+  padding: 26px;
+  border-top: 1px solid #a9c7dd;
+  background: #ffffff85;
+}
+.workflow-index {
+  color: #5283a5;
+  font: 12px ui-monospace, monospace;
+}
+.workflow-steps h3 {
+  margin-top: 16px;
+  font-size: 22px;
+  line-height: 1.4;
+}
+.workflow-steps p {
+  margin-top: 12px;
   font-size: 15px;
-  font-weight: 650;
-  line-height: 1.6;
-}
-.request-card dd {
-  margin: 8px 0 0;
-  color: #50687e;
-  font-size: 16px;
-  line-height: 1.8;
-}
-.card-signature {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  color: #7a93a6;
-  font-size: 10px;
-  padding-top: 16px;
-  border-top: 1px solid #e8eef4;
-}
-.card-signature .tiny-hex {
-  width: 9px;
-  height: 10px;
-  opacity: 0.65;
-}
-.card-signature span:last-child {
-  margin-left: auto;
-  font-family: ui-monospace, monospace;
+  line-height: 1.85;
+  color: var(--muted);
 }
 .demo-section {
-  --feedback-width: 1320px;
   overflow-anchor: none;
   color: #f5f9fc;
   background: radial-gradient(ellipse at 50% 0%, #264a67 0%, #182b3b 66%);
 }
-.demo-section .section-label {
-  color: #a4c5df;
-}
-.demo-heading {
-  margin-bottom: 39px;
-}
+.demo-section .section-label { color: #a4c5df; }
+.demo-heading { margin-bottom: 34px; }
 .demo-heading > p:last-child {
   color: #c5d4df;
+  max-width: 820px;
   font-size: 17px;
   line-height: 1.8;
   margin-top: 18px;
 }
-.recording-link {
-  width: min(100%, var(--feedback-width));
+.preview-note {
+  margin-top: 18px;
+  font-size: 12px;
+  color: #b0c4d5;
+  line-height: 1.8;
+}
+.workbench-catalog {
+  padding-top: 36px;
+  margin-top: 36px;
+  border-top: 1px solid #456077;
+}
+.workbench-catalog h3 { font-size: 20px; font-weight: 580; }
+.workbench-catalog ul {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 15px;
-  margin-top: 28px;
-  margin-inline: auto;
+  gap: 12px;
+  padding: 0;
+  margin: 22px 0;
+  list-style: none;
 }
-.recording-link a {
-  font-size: 13px;
-  color: #d3e9f8;
-  min-height: 44px;
+.workbench-catalog li {
+  border: 1px solid #526e84;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #e3edf5;
+}
+.workbench-catalog li small {
+  margin-left: 10px;
+  font-size: 10px;
+  color: #b9d5ec;
+}
+.workbench-catalog > p {
+  font-size: 14px;
+  line-height: 1.85;
+  color: #b8cbd9;
+  max-width: 840px;
+}
+.catalog-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: 18px;
+}
+.catalog-links a {
   display: inline-flex;
   align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 13px;
+  color: #d3e9f8;
   text-decoration: underline;
   text-underline-offset: 4px;
-}
-.recording-link small {
-  font-size: 11px;
-  color: #b0c4d5;
 }
 .start-section {
   background: var(--paper);
@@ -734,6 +675,16 @@ summary::-webkit-details-marker {
   line-height: 1.9;
   color: var(--muted);
 }
+.installation-guide {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-bottom: 24px;
+  color: #28698f;
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
 .site-footer {
   background: var(--paper);
   border-top: 1px solid var(--line);
@@ -807,10 +758,10 @@ summary::-webkit-details-marker {
     padding-top: 150px;
   }
   h1 {
-    font-size: 62px;
+    font-size: 54px;
   }
   :lang(zh) h1 {
-    font-size: 74px;
+    font-size: 54px;
   }
   .hero-body {
     font-size: 16px;
@@ -821,12 +772,6 @@ summary::-webkit-details-marker {
   .hero-actions .button {
     padding: 13px 17px;
     font-size: 14px;
-  }
-  .request-grid {
-    gap: 6%;
-  }
-  .request-card {
-    padding: 26px;
   }
   .start-steps {
     gap: 20px;
@@ -973,7 +918,7 @@ summary::-webkit-details-marker {
     line-height: 1.1;
   }
   :lang(zh) h1 {
-    font-size: clamp(48px, 8.6vw, 64px);
+    font-size: clamp(34px, 7.6vw, 58px);
     line-height: 1.15;
   }
   .hero-body {
@@ -1027,58 +972,21 @@ summary::-webkit-details-marker {
   .hero-footnote {
     display: none;
   }
-  .request-grid {
-    grid-template-columns: 1fr;
-    gap: 31px;
-  }
   .section-copy > p:not(.section-label) {
-    max-width: 490px;
     margin-top: 17px;
     font-size: 16px;
     line-height: 1.8;
   }
-  .editorial-rule,
-  .section-copy small {
-    display: none;
+  .workflow-steps {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-top: 28px;
   }
-  .request-card {
-    padding: 23px 23px 18px;
-    border-radius: 8px;
-  }
-  .request-card h3 {
-    font-size: 21px;
-    margin-top: 18px;
-    padding-bottom: 18px;
-  }
-  .request-card dt {
-    font-size: 14px;
-  }
-  .request-card dd {
-    font-size: 15px;
-  }
-  .request-card dl {
-    margin-block: 20px;
-    gap: 22px;
-  }
-  .example-label {
-    font-size: 10px;
-  }
-  .demo-heading {
-    margin-bottom: 27px;
-  }
-  .demo-heading > p:last-child {
-    font-size: 16px;
-    margin-top: 17px;
-  }
-  .recording-link {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0;
-    margin-top: 19px;
-  }
-  .recording-link small {
-    line-height: 1.7;
-  }
+  .workflow-steps li { padding: 22px; }
+  .workflow-steps h3 { font-size: 20px; }
+  .demo-heading { margin-bottom: 26px; }
+  .demo-heading > p:last-child { font-size: 16px; }
+  .workbench-catalog li { padding: 8px 11px; font-size: 13px; }
   .start-intro {
     font-size: 16px;
     margin-top: 18px;
@@ -1219,3 +1127,12 @@ summary::-webkit-details-marker {
     transition: none !important;
   }
 }
+
+.upgrade-note {
+  margin-top: 18px;
+  max-width: 510px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #45667e;
+}
+.upgrade-note a { text-decoration: underline; text-underline-offset: 3px; }

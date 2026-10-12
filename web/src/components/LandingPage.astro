@@ -1,5 +1,5 @@
 ---
-import ProductMock from './ProductMock.svelte'
+import WorkbenchDemos from './WorkbenchDemos.svelte'
 import { links, release, repoUrl, type SiteContent } from '../content/site'
 interface Props { content: SiteContent }
 const { content: c } = Astro.props
@@ -12,7 +12,7 @@ const { content: c } = Astro.props
       <span>RambleDesk</span>
     </a>
     <nav class="desktop-nav" aria-label={c.nav.label}>
-      <a href="#workflow">{c.nav.workflow}</a>
+      <a href="#demo">{c.nav.workflow}</a>
       <a href="#start">{c.nav.start}</a>
       <a href={repoUrl}>GitHub <span aria-hidden="true">↗</span></a>
     </nav>
@@ -22,7 +22,7 @@ const { content: c } = Astro.props
       <details class="mobile-menu">
         <summary aria-label={c.nav.menu}><span></span><span></span></summary>
         <nav aria-label={c.nav.label}>
-          <a href="#workflow">{c.nav.workflow}</a><a href="#start">{c.nav.start}</a>
+          <a href="#demo">{c.nav.workflow}</a><a href="#start">{c.nav.start}</a>
           <a href="#download">{c.nav.download}</a><a href={repoUrl}>GitHub ↗</a>
         </nav>
       </details>
@@ -50,35 +50,33 @@ const { content: c } = Astro.props
     </div>
   </section>
 
-  <section class="request-section section-space" id="workflow" aria-labelledby="request-title">
-    <div class="request-grid container">
+  <section class="workflow-section section-space" id="workflow" aria-labelledby="workflow-title">
+    <div class="container">
       <div class="section-copy">
-        <p class="section-label">{c.request.label}</p>
-        <h2 id="request-title">{c.request.title}</h2>
-        <p>{c.request.body}</p>
-        <div class="editorial-rule" aria-hidden="true"><span></span><i></i></div>
-        <small>{c.request.note}</small>
+        <p class="section-label">{c.workflow.label}</p>
+        <h2 id="workflow-title">{c.workflow.title}</h2>
+        <p>{c.workflow.body}</p>
       </div>
-      <article class="request-card" aria-label={c.request.example} data-reveal>
-        <div class="request-topline"><span class="status"><i></i>{c.request.status}</span><span class="example-label">{c.request.example}</span></div>
-        <h3>{c.request.subject}</h3>
-        <dl>
-          <div><dt>{c.request.happened}</dt><dd>{c.request.progress}</dd></div>
-          <div><dt>{c.request.ask}</dt><dd>{c.request.action}</dd></div>
-        </dl>
-        <div class="card-signature" aria-hidden="true"><span class="tiny-hex"></span><span>RambleDesk</span><span>01</span></div>
-      </article>
+      <ol class="workflow-steps">
+        {c.workflow.steps.map((step, i) => <li data-reveal><span class="workflow-index">0{i + 1}</span><h3>{step.title}</h3><p>{step.body}</p></li>)}
+      </ol>
     </div>
   </section>
 
   <section class="demo-section section-space" id="demo" aria-labelledby="demo-title">
     <div class="container">
       <div class="demo-heading">
-        <p class="section-label">{c.demo.label}</p>
-        <h2 id="demo-title">{c.demo.title}</h2><p>{c.demo.body}</p>
+        <p class="section-label">{c.workbenches.label}</p>
+        <h2 id="demo-title">{c.workbenches.title}</h2><p>{c.workbenches.body}</p>
       </div>
-      <ProductMock client:visible lang={c.lang} />
-      <div class="recording-link"><a href={links.earlyDemo}>{c.demo.recording}</a><small>{c.demo.recordingNote}</small></div>
+      <WorkbenchDemos client:visible content={c.workbenches} lang={c.lang} />
+      <p class="preview-note">{c.workbenches.previewNote}</p>
+      <div class="workbench-catalog">
+        <h3>{c.workbenches.catalogTitle}</h3>
+        <ul>{c.workbenches.catalog.map(item => <li>{item.name}{item.development && <small>{c.workbenches.developmentLabel}</small>}</li>)}</ul>
+        <p>{c.workbenches.note}</p>
+        <div class="catalog-links">{c.workbenches.references.map(item => <a href={item.href}>{item.label}<span aria-hidden="true">↗</span></a>)}</div>
+      </div>
     </div>
   </section>
 
@@ -90,7 +88,7 @@ const { content: c } = Astro.props
       <ol class="start-steps">
         {c.start.steps.map((step, i) => <li><span class="step-index">0{i + 1}</span><div><h3>{step.title}</h3><p>{step.body}</p></div></li>)}
       </ol>
-      <div class="start-resources"><div class="resource-links"><a href={links.acp}>{c.start.acp}<span aria-hidden="true">↗</span></a><a href={links.adapters}>{c.start.adapters}<span aria-hidden="true">↗</span></a></div><p>{c.start.voice}</p></div>
+      <div class="start-resources"><div class="resource-links"><a href={links.acp}>{c.start.acp}<span aria-hidden="true">↗</span></a><a href={links.adapters}>{c.start.adapters}<span aria-hidden="true">↗</span></a></div><p>{c.start.note}</p></div>
     </div>
   </section>
 
@@ -106,6 +104,7 @@ const { content: c } = Astro.props
           <a class="button button-outline platform-button" href={release.windows}><span>{c.download.windows}<small>x64 · .exe</small></span><span aria-hidden="true">↓</span></a>
         </div>
         <p class="release-meta"><span>v{release.version} · {c.download.candidate}</span><a href={release.url}>{c.download.releaseNotes} ↗</a></p>
+        <p class="upgrade-note">{c.download.upgrade} <a href={links.compatibility}>{c.download.upgradeGuide} ↗</a></p>
       </div>
     </div>
   </section>
@@ -119,6 +118,7 @@ const { content: c } = Astro.props
           <div><h3>{c.download.voiceTitle}</h3><p>{c.download.voiceNote}</p></div>
           <div><h3>{c.download.organizeTitle}</h3><p>{c.download.organizeNote}</p></div>
         </div>
+        <a class="installation-guide" href={c.lang === 'zh-CN' ? links.installationZh : links.installation}>{c.download.installation} ↗</a>
       </details>
     </div>
   </div>
@@ -127,7 +127,7 @@ const { content: c } = Astro.props
   <div class="footer-inner container">
     <a class="brand" href={c.path}><img src="/assets/refresh/rambledesk-mark.svg" width="30" height="30" alt=""/><span>RambleDesk</span></a>
     <span class="footer-signature">{c.footer.signature}</span>
-    <nav aria-label={c.lang === 'en' ? 'Footer' : '页脚'}><a href={repoUrl}>GitHub</a><a href={c.lang === 'zh-CN' ? links.docs.replace('README.md', 'README.zh-CN.md') : links.docs}>{c.footer.docs}</a><a href={links.license}>{c.footer.license}</a><a href={c.alternatePath}>{c.alternateLabel}</a></nav>
+    <nav aria-label={c.lang === 'en' ? 'Footer' : '页脚'}><a href={repoUrl}>GitHub</a><a href={c.lang === 'zh-CN' ? links.docsZh : links.docs}>{c.footer.docs}</a><a href={links.license}>{c.footer.license}</a><a href={c.alternatePath}>{c.alternateLabel}</a></nav>
   </div>
 </footer>
 <script>
